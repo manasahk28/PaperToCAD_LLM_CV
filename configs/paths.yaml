@@ -1,0 +1,82 @@
+project_root: null
+
+# External repositories vendored inside this repository.
+# HAWP config is tracked in-repo at configs/config.yaml rather than under weights/.
+legacy:
+  work_root: outputs/run1
+  runs_root: outputs/run1/yolo_detect
+  parseq_repo: third_party/parseq-main
+  # If third_party/parseq-main includes hubconf.py, this can stay the same.
+  parseq_torchhub_repo: third_party/parseq-main
+  hawp_repo: third_party/HAWP
+  mmpose_repo: third_party/mmpose
+
+paths:
+  # ===== Inputs =====
+  src_img: data/inputs
+  classes_txt: assets/meta/classes.txt
+  yolo_data_yaml: configs/yolo_data.yaml
+
+  # ===== Outputs (run1) =====
+  src_img_scanned: outputs/run1/src_img_scanned
+
+  # YOLO detection outputs
+  yolo_detect_exp: outputs/run1/yolo_detect/exp
+  yolo_labels: outputs/run1/yolo_detect/exp/labels
+  yolo_crops: outputs/run1/yolov10_crops
+
+  # OCR fusion outputs
+  fuse_json: outputs/run1/fuse_json
+
+  # Component suppression outputs
+  suppressed_img: outputs/run1/suppressed_img
+
+  # HAWP outputs
+  hawp_json: outputs/run1/HAWPimg/json
+
+  # Merged point outputs
+  merged_points_vis: outputs/run1/merged_points/merged_points_vis
+  merged_points_json: outputs/run1/merged_points/merged_points_json
+
+  # Wire-enhancement outputs
+  dao_xian: outputs/run1/dao_xian
+
+  # Connectivity outputs
+  link_root: outputs/run1/link
+  link_json: outputs/run1/link/json
+
+  # Type refinement / endpoint semantic outputs
+  type_refine_json: outputs/run1/type_refine/json
+  ports_cls_json: outputs/run1/ports_cls/json
+
+  # Final structured parsing outputs
+  final_result_root: outputs/run1/final_result
+
+  # SPICE netlists generated from final JSON files
+  spice_netlists: outputs/run1/spice_netlists
+
+  # Shared static assets
+  font_dir: assets/fonts
+
+weights:
+  # YOLO
+  yolo_best: weights/yolo/best.pt
+
+  # PARSeq
+  parseq_ckpt: weights/parseq/best_parseq.pt
+  parseq_charset: assets/meta/parseq_charset.txt
+
+  # HAWP (cfg + ckpt)
+  hawp_cfg: configs/config.yaml
+  hawp_ckpt: weights/hawp/last_epoch_035.pth
+
+  # DINOv2 subtype classifiers
+  bjt_ckpt: weights/dinov2/best_bjt_partial_ft.pt
+  fet_ckpt: weights/dinov2/best_mosfet_partial_ft.pt
+  dcsrc_ckpt: weights/dinov2/best_dcsrc_partial_ft.pt
+
+  # ViTPose
+  pose3k_cfg: configs/mmpose_ports/vitpose_l_ports_3k_256x192_fix.py
+  pose3k_wts: weights/vitpose/best_coco_AP_epoch_29.pth
+  pose2k_cfg: configs/mmpose_ports/vitpose_l_ports_2k_256x192_fix.py
+  pose2k_wts: weights/vitpose/best_coco_AP_epoch_30.pth

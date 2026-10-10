@@ -1,0 +1,75 @@
+# Portable template for local path overrides.
+#
+# Recommended usage:
+# 1) Keep configs/paths.yaml as the default portable config committed to the repo.
+# 2) Copy this file to configs/paths.local.yaml only if you need local overrides.
+# 3) Paths are interpreted relative to the repository root and will be resolved
+#    to absolute paths by src/pipeline/config_utils.py.
+#
+# Notes:
+# - Keep the key names unchanged (scripts/run_all.sh and Python scripts depend on them).
+# - Do not replace values with absolute paths unless you intentionally want a machine-specific override.
+# - This template assumes third-party repos and weights are placed under the project tree.
+# - HAWP config is now tracked in the repository at configs/config.yaml rather than under weights/.
+
+project_root: null
+
+legacy:
+  work_root: outputs/run1
+  runs_root: outputs/run1/yolo_detect
+  parseq_repo: third_party/parseq-main
+  parseq_torchhub_repo: third_party/parseq-main
+  hawp_repo: third_party/HAWP
+  mmpose_repo: third_party/mmpose
+
+paths:
+  # Inputs / metadata
+  src_img: data/inputs
+  classes_txt: assets/meta/classes.txt
+  yolo_data_yaml: configs/yolo_data.yaml
+
+  # Intermediate outputs
+  src_img_scanned: outputs/run1/src_img_scanned
+  yolo_detect_exp: outputs/run1/yolo_detect/exp
+  yolo_labels: outputs/run1/yolo_detect/exp/labels
+  yolo_crops: outputs/run1/yolov10_crops
+  fuse_json: outputs/run1/fuse_json
+  suppressed_img: outputs/run1/suppressed_img
+  hawp_json: outputs/run1/HAWPimg/json
+  merged_points_vis: outputs/run1/merged_points/merged_points_vis
+  merged_points_json: outputs/run1/merged_points/merged_points_json
+  dao_xian: outputs/run1/dao_xian
+  link_root: outputs/run1/link
+  link_json: outputs/run1/link/json
+  type_refine_json: outputs/run1/type_refine/json
+  ports_cls_json: outputs/run1/ports_cls/json
+
+  # Final outputs
+  final_result_root: outputs/run1/final_result
+  spice_netlists: outputs/run1/spice_netlists
+
+  # Shared static assets
+  font_dir: assets/fonts
+
+weights:
+  # YOLO
+  yolo_best: weights/yolo/best.pt
+
+  # PARSeq
+  parseq_ckpt: weights/parseq/best_parseq.pt
+  parseq_charset: assets/meta/parseq_charset.txt
+
+  # HAWP
+  hawp_cfg: configs/config.yaml
+  hawp_ckpt: weights/hawp/last_epoch_035.pth
+
+  # DINOv2 subtype classifiers
+  bjt_ckpt: weights/dinov2/best_bjt_partial_ft.pt
+  fet_ckpt: weights/dinov2/best_mosfet_partial_ft.pt
+  dcsrc_ckpt: weights/dinov2/best_dcsrc_partial_ft.pt
+
+  # ViTPose
+  pose3k_cfg: configs/mmpose_ports/vitpose_l_ports_3k_256x192_fix.py
+  pose3k_wts: weights/vitpose/best_coco_AP_epoch_29.pth
+  pose2k_cfg: configs/mmpose_ports/vitpose_l_ports_2k_256x192_fix.py
+  pose2k_wts: weights/vitpose/best_coco_AP_epoch_30.pth
