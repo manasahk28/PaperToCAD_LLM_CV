@@ -27,6 +27,15 @@ sys.path.insert(0, str(REPO_ROOT / "third_party" / "mmpose"))
 from config_utils import get_default_config_path, load_paths_config
 
 
+# Ensure stdout/stderr handle UTF-8 cleanly on Windows consoles
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+
 def cfg_get(cfg: dict, dotted_key: str, default=None):
     cur = cfg
     for part in dotted_key.split("."):
@@ -38,16 +47,16 @@ def cfg_get(cfg: dict, dotted_key: str, default=None):
 
 def run_cmd(cmd: list[str], desc: str, env=None):
     print(f"\n{'='*60}")
-    print(f"▶ {desc}")
+    print(f">>> {desc}")
     print(f"Command: {' '.join(str(c) for c in cmd)}")
     print(f"{'='*60}")
     start = time.time()
     res = subprocess.run(cmd, env=env, cwd=str(REPO_ROOT))
     duration = time.time() - start
     if res.returncode != 0:
-        print(f"❌ Failed ({desc}) with exit code {res.returncode} in {duration:.1f}s")
+        print(f"[FAIL] Failed ({desc}) with exit code {res.returncode} in {duration:.1f}s")
         sys.exit(res.returncode)
-    print(f"✔ Completed ({desc}) in {duration:.1f}s")
+    print(f"[OK] Completed ({desc}) in {duration:.1f}s")
 
 
 def main():
@@ -64,6 +73,7 @@ def main():
 
     # Prepare environment variables
     env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
     py_path = [
         str(PIPELINE_DIR),
         str(REPO_ROOT / "third_party" / "HAWP"),
@@ -100,17 +110,27 @@ def main():
 
     # 1. YOLO
     if stage in ("all", "yolo"):
-        yolo_cmd = [
-            "yolo", "detect", "predict",
-            f"model={yolo_model}",
-            f"source={src_img}",
-            "conf=0.45", "iou=0.40",
-            "save_txt=True", "save_conf=True", "save_crop=True",
-            f"project={yolo_project}", f"name={yolo_name}", "exist_ok=True"
-        ]
+        print(f"\n{'='*60}")
+        print(">>> [1/9] YOLOv10 Component Detection")
+        print(f"{'='*60}")
+        start_t = time.time()
+        from ultralytics import YOLO
+        yolo = YOLO(str(yolo_model))
+        kwargs = {
+            "source": str(src_img),
+            "conf": 0.45,
+            "iou": 0.40,
+            "save_txt": True,
+            "save_conf": True,
+            "save_crop": True,
+            "project": str(yolo_project),
+            "name": str(yolo_name),
+            "exist_ok": True,
+        }
         if args.device:
-            yolo_cmd.append(f"device={args.device}")
-        run_cmd(yolo_cmd, "[1/9] YOLOv10 Component Detection", env=env)
+            kwargs["device"] = args.device
+        yolo.predict(**kwargs)
+        print(f"[OK] YOLOv10 Prediction complete in {time.time() - start_t:.1f}s")
         run_cmd([py, str(PIPELINE_DIR / "scanify_folder.py")], "[1.1/9] Scanify Binarization", env=env)
         run_cmd([py, str(PIPELINE_DIR / "make_yolov10_crops_by_image.py")], "[1.2/9] Component Cropping", env=env)
 
@@ -161,7 +181,7 @@ def main():
         ]
         run_cmd(spice_cmd, "[9/9] Export SPICE Netlists", env=env)
 
-    print("\n🎉 Pipeline execution completed successfully!")
+    print("\n[DONE] Pipeline execution completed successfully!")
 
 
 if __name__ == "__main__":

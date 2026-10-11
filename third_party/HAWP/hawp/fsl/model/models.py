@@ -174,7 +174,7 @@ class WireframeDetector(nn.Module):
         self.n_out_line = cfg.MODEL.PARSING_HEAD.N_OUT_LINE
         self.use_residual = int(cfg.MODEL.PARSING_HEAD.USE_RESIDUAL)
 
-        self.register_buffer('tspan', torch.linspace(0, 1, self.n_pts0)[None,None,:].cuda())
+        self.register_buffer('tspan', torch.linspace(0, 1, self.n_pts0)[None,None,:])
         
         assert cfg.MODEL.LOI_POOLING.TYPE in ['softmax', 'sigmoid']
         assert cfg.MODEL.LOI_POOLING.ACTIVATION in ['relu', 'gelu']
