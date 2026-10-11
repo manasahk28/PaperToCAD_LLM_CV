@@ -1,5 +1,14 @@
+import sys
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 import json
 from pathlib import Path
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 def classify_circuit(components):
     active = [c for c in components if c.get("cls_name") not in ("text", "junction", "crossover") and "gnd" not in c.get("cls_name", "")]
@@ -59,17 +68,19 @@ def classify_circuit(components):
     return "single_loop"
 
 # Test on cir1
-with open("outputs/run1/final_result/json/cir1.final.json") as f:
-    cir1_data = json.load(f)
-print("cir1 classification:", classify_circuit(cir1_data["components"]))
+cir1_path = REPO_ROOT / "outputs" / "run1" / "final_result" / "json" / "cir1.final.json"
+if cir1_path.exists():
+    with open(cir1_path) as f:
+        cir1_data = json.load(f)
+    print("cir1 classification:", classify_circuit(cir1_data["components"]))
 
 # Test on LED circuit
-jobs = sorted(Path("outputs/ui_jobs").glob("*"), key=lambda p: p.stat().st_mtime)
-latest = jobs[-1]
-with open(latest / "circuit.json") as f:
-    led_data = json.load(f)
-
-# Use cleaned components
-from test_fix_hallucination import suppress_duplicates
-cleaned_led = suppress_duplicates(led_data["components"])
-print("LED circuit classification:", classify_circuit(cleaned_led))
+jobs = sorted((REPO_ROOT / "outputs" / "ui_jobs").glob("*"), key=lambda p: p.stat().st_mtime)
+if jobs:
+    latest = jobs[-1]
+    if (latest / "circuit.json").exists():
+        with open(latest / "circuit.json") as f:
+            led_data = json.load(f)
+        from test_fix_hallucination import suppress_duplicates
+        cleaned_led = suppress_duplicates(led_data["components"])
+        print("LED circuit classification:", classify_circuit(cleaned_led))

@@ -89,8 +89,13 @@ def bind_text_labels(components, text_boxes):
         elif val:
             c["text_label"] = val
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 def test():
-    jobs = sorted(Path("outputs/ui_jobs").glob("*"), key=lambda p: p.stat().st_mtime)
+    jobs = sorted((REPO_ROOT / "outputs" / "ui_jobs").glob("*"), key=lambda p: p.stat().st_mtime)
+    if not jobs:
+        print("No ui_jobs found.")
+        return
     latest = jobs[-1]
     with open(latest / "circuit.json", encoding="utf-8") as f:
         d = json.load(f)

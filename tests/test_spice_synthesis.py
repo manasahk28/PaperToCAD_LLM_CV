@@ -3,10 +3,13 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 import json
 from pathlib import Path
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_fix_hallucination import suppress_duplicates, bind_text_labels
 
 def test_spice_synthesis():
-    jobs = sorted(Path("outputs/ui_jobs").glob("*"), key=lambda p: p.stat().st_mtime)
+    jobs = sorted((REPO_ROOT / "outputs" / "ui_jobs").glob("*"), key=lambda p: p.stat().st_mtime)
     latest = jobs[-1]
     with open(latest / "circuit.json", encoding="utf-8") as f:
         d = json.load(f)

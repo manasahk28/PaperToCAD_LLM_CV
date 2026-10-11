@@ -3,11 +3,14 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 import json
 from pathlib import Path
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import schemdraw
 import schemdraw.elements as elm
 
 def test_schemdraw_single_loop_from_components():
-    jobs = sorted(Path("outputs/ui_jobs").glob("*"), key=lambda p: p.stat().st_mtime)
+    jobs = sorted((REPO_ROOT / "outputs" / "ui_jobs").glob("*"), key=lambda p: p.stat().st_mtime)
     latest = jobs[-1]
     with open(latest / "circuit.json", encoding="utf-8") as f:
         d = json.load(f)
@@ -24,7 +27,8 @@ def test_schemdraw_single_loop_from_components():
     passives = [c for c in active if c not in sources]
     passives.sort(key=lambda c: (c["bbox"][0] + c["bbox"][2]) / 2)
 
-    with schemdraw.Drawing(file="scratch_led_reconstructed.png", show=False) as d_draw:
+    out_preview = REPO_ROOT / "outputs" / "test_previews" / "scratch_led_reconstructed.png"
+    with schemdraw.Drawing(file=str(out_preview), show=False) as d_draw:
         d_draw.config(fontsize=12, unit=2.8)
 
         # Source on left
