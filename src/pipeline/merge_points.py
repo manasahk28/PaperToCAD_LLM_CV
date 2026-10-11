@@ -1,7 +1,15 @@
 import os
+import sys
 import cv2
 import json
 from glob import glob
+
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 import numpy as np
 from sklearn.cluster import DBSCAN
@@ -421,7 +429,7 @@ def visualize_final(img_path, point_infos, save_path):
         cv2.circle(img, (x, y), 4, color, -1)
 
     cv2.imwrite(save_path, img)
-    print(f"[FINAL] Saved final merged points → {save_path}")
+    print(f"[FINAL] Saved final merged points -> {save_path}")
 
 
 def save_points_json(name, point_infos, components, save_dir):
@@ -436,7 +444,7 @@ def save_points_json(name, point_infos, components, save_dir):
     save_path = os.path.join(save_dir, f"{name}.json")
     with open(save_path, "w") as f:
         json.dump(js, f, indent=2)
-    print(f"[JSON] Saved → {save_path}")
+    print(f"[JSON] Saved -> {save_path}")
 
 
 # =========================

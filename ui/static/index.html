@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PaperToCAD Studio | Hand-Drawn Circuit to SPICE Netlist</title>
+  <meta name="description" content="AI-Powered Computer Vision Pipeline converting hand-drawn circuit diagrams into structured CAD representations and SPICE netlists.">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome for clean icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Background Glow & Grid Canvas -->
+  <div class="circuit-bg-grid"></div>
+  <div class="glow-orb glow-orb-1"></div>
+  <div class="glow-orb glow-orb-2"></div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-microchip"></i>
+        </div>
+        <div class="brand-text">
+          <h1>PaperToCAD <span class="badge-pro">Studio</span></h1>
+          <p class="subtitle">Hand-Drawn Schematic to SPICE Netlist AI Engine</p>
+        </div>
+      </div>
+      
+      <div class="header-status">
+        <div class="status-indicator">
+          <span class="status-dot"></span>
+          <span class="status-text" id="engineStatus">YOLOv10 + PARSeq Ready</span>
+        </div>
+        <div class="device-pill">
+          <i class="fa-solid fa-bolt"></i>
+          <span id="currentDeviceLabel">CPU Accelerated</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-layout">
+    <!-- Left Column: Input & Controls -->
+    <aside class="sidebar-panel">
+      <!-- Section: Preset Gallery -->
+      <div class="panel-card sample-section">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fa-solid fa-images"></i>
+            <span>Sample Circuits</span>
+          </div>
+          <span class="panel-hint">Quick Test</span>
+        </div>
+        <div class="sample-chips" id="sampleChips">
+          <!-- Dynamically populated sample chips -->
+          <button class="sample-chip active" data-sample="cir1">
+            <i class="fa-solid fa-wave-square"></i> cir1 (RLC)
+          </button>
+          <button class="sample-chip" data-sample="cir2">
+            <i class="fa-solid fa-triangle-exclamation"></i> cir2 (Op-Amps)
+          </button>
+          <button class="sample-chip" data-sample="cir3">
+            <i class="fa-solid fa-bolt"></i> cir3 (Bridge)
+          </button>
+          <button class="sample-chip" data-sample="cir4">
+            <i class="fa-solid fa-plug"></i> cir4 (MOSFET)
+          </button>
+          <button class="sample-chip" data-sample="cir5">
+            <i class="fa-solid fa-sliders"></i> cir5 (Passive)
+          </button>
+        </div>
+      </div>
+
+      <!-- Section: Upload Zone -->
+      <div class="panel-card upload-section">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span>Upload Diagram</span>
+          </div>
+        </div>
+
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept="image/jpeg,image/png,image/jpg,image/webp" style="display: none;">
+          
+          <div class="dropzone-content" id="dropzonePrompt">
+            <div class="upload-icon-ring">
+              <i class="fa-solid fa-file-arrow-up"></i>
+            </div>
+            <h3>Drag & Drop Circuit Diagram</h3>
+            <p>or <button type="button" class="browse-link" id="browseBtn">browse files</button> from disk</p>
+            <div class="upload-badge">JPG, PNG, WebP up to 25MB</div>
+          </div>
+
+          <!-- Preview thumbnail -->
+          <div class="dropzone-preview" id="dropzonePreview" style="display: none;">
+            <img id="previewImg" src="" alt="Circuit Preview">
+            <div class="preview-overlay">
+              <span class="preview-filename" id="previewFilename">circuit.jpg</span>
+              <button type="button" class="remove-btn" id="removeImgBtn" title="Remove image">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Detection Parameters -->
+      <div class="panel-card config-section">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fa-solid fa-sliders"></i>
+            <span>Inference Settings</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <label for="confRange">Confidence Threshold</label>
+          <div class="slider-control">
+            <input type="range" id="confRange" min="0.10" max="0.80" step="0.05" value="0.35">
+            <span class="slider-val" id="confVal">0.35</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <label>Compute Backend</label>
+          <div class="toggle-group" id="deviceToggleGroup">
+            <button class="toggle-btn active" data-device="cpu">CPU</button>
+            <button class="toggle-btn" data-device="cuda">CUDA GPU</button>
+          </div>
+        </div>
+
+        <!-- Action Button -->
+        <button class="btn-primary analyze-btn" id="analyzeBtn">
+          <span class="btn-spinner" id="btnSpinner" style="display: none;">
+            <i class="fa-solid fa-circle-notch fa-spin"></i>
+          </span>
+          <span class="btn-text" id="btnText">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Convert to SPICE Netlist
+          </span>
+        </button>
+      </div>
+
+      <!-- Live Step Progress Tracker -->
+      <div class="panel-card progress-tracker-card" id="progressCard" style="display: none;">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fa-solid fa-bars-progress"></i>
+            <span>Pipeline Execution</span>
+          </div>
+          <span class="progress-pct" id="progressPct">0%</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" id="progressBarFill"></div>
+        </div>
+        <ul class="pipeline-steps-list" id="pipelineStepsList">
+          <li class="step-item" id="step-init"><i class="fa-solid fa-circle-dot"></i> Image Ingestion</li>
+          <li class="step-item" id="step-yolo"><i class="fa-solid fa-circle-dot"></i> YOLOv10 Component Detection</li>
+          <li class="step-item" id="step-crops"><i class="fa-solid fa-circle-dot"></i> Micro-Cropping & Bounding Boxes</li>
+          <li class="step-item" id="step-parseq"><i class="fa-solid fa-circle-dot"></i> PARSeq Text & Value OCR</li>
+          <li class="step-item" id="step-spice"><i class="fa-solid fa-circle-dot"></i> SPICE Netlist Synthesis</li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Right Column: Interactive Results Dashboard -->
+    <section class="results-dashboard">
+      <!-- Top Metrics Strip (Visible upon completion) -->
+      <div class="metrics-strip" id="metricsStrip" style="display: none;">
+        <div class="metric-card">
+          <div class="metric-icon cyan"><i class="fa-solid fa-shapes"></i></div>
+          <div class="metric-info">
+            <span class="metric-value" id="statComponents">0</span>
+            <span class="metric-label">Components</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon purple"><i class="fa-solid fa-font"></i></div>
+          <div class="metric-info">
+            <span class="metric-value" id="statLabels">0</span>
+            <span class="metric-label">OCR Text Tags</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon green"><i class="fa-solid fa-code"></i></div>
+          <div class="metric-info">
+            <span class="metric-value" id="statNets">0</span>
+            <span class="metric-label">Netlist Elements</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon amber"><i class="fa-solid fa-stopwatch"></i></div>
+          <div class="metric-info">
+            <span class="metric-value" id="statTime">0.0s</span>
+            <span class="metric-label">Processing Time</span>
+          </div>
+        </div>
+
+        <div class="export-actions">
+          <button class="btn-action primary-action" id="downloadSchematicBtn" title="Download Computerized Schematic (SVG)">
+            <i class="fa-solid fa-file-arrow-down"></i> Schematic (.svg)
+          </button>
+          <button class="btn-action" id="downloadSpiceBtn" title="Download SPICE Netlist (.cir)">
+            <i class="fa-solid fa-download"></i> Netlist (.cir)
+          </button>
+          <button class="btn-action" id="downloadJsonBtn" title="Download Circuit Graph (.json)">
+            <i class="fa-solid fa-file-code"></i> JSON Graph
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabs Navigation -->
+      <div class="dashboard-tabs">
+        <button class="tab-btn active" data-tab="tab-overlay">
+          <i class="fa-solid fa-microchip"></i> Computerized CAD Schematic
+        </button>
+        <button class="tab-btn" data-tab="tab-inventory">
+          <i class="fa-solid fa-boxes-stacked"></i> Component Inventory <span class="tab-badge" id="inventoryBadge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-spice">
+          <i class="fa-solid fa-terminal"></i> SPICE Netlist
+        </button>
+        <button class="tab-btn" data-tab="tab-json">
+          <i class="fa-solid fa-network-wired"></i> Structured JSON
+        </button>
+        <button class="tab-btn" data-tab="tab-logs">
+          <i class="fa-solid fa-scroll"></i> Engine Logs
+        </button>
+      </div>
+
+      <!-- Tab Content 1: Visual Overlay / CAD Studio -->
+      <div class="tab-pane active" id="tab-overlay">
+        <div class="viewer-container">
+          <div class="viewer-toolbar">
+            <div class="view-mode-toggle">
+              <button class="mode-btn active" id="btnShowSchematic">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Computerized Schematic
+              </button>
+              <button class="mode-btn" id="btnShowSchemdraw">
+                <i class="fa-solid fa-bezier-curve"></i> Schemdraw
+              </button>
+              <button class="mode-btn" id="btnShowAnnotated">
+                <i class="fa-solid fa-tags"></i> Detection Boxes
+              </button>
+              <button class="mode-btn" id="btnShowOriginal">
+                <i class="fa-solid fa-image"></i> Hand Drawing
+              </button>
+            </div>
+
+            <div class="cad-theme-toggle" id="cadThemeGroup">
+              <button class="theme-btn active" id="btnThemeDark" title="Dark CAD Theme">
+                <i class="fa-solid fa-moon"></i> Dark
+              </button>
+              <button class="theme-btn" id="btnThemeLight" title="Light Technical Blueprint">
+                <i class="fa-solid fa-sun"></i> Blueprint
+              </button>
+            </div>
+
+            <div class="viewer-tools">
+              <button class="tool-btn" id="zoomInBtn" title="Zoom In"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+              <button class="tool-btn" id="zoomOutBtn" title="Zoom Out"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+              <button class="tool-btn" id="zoomResetBtn" title="Reset View"><i class="fa-solid fa-compress"></i></button>
+            </div>
+          </div>
+
+          <div class="canvas-viewport" id="canvasViewport">
+            <!-- Placeholder state before first run -->
+            <div class="viewport-placeholder" id="viewportPlaceholder">
+              <div class="placeholder-graphic">
+                <i class="fa-solid fa-draw-polygon"></i>
+              </div>
+              <h3>No Circuit Analyzed Yet</h3>
+              <p>Select a sample circuit or upload a photo of your hand-drawn diagram and click <strong>"Convert to SPICE Netlist"</strong>.</p>
+            </div>
+
+            <!-- Active image display -->
+            <div class="image-wrapper" id="imageWrapper" style="display: none;">
+              <img id="mainDisplayImg" src="" alt="Circuit Output">
+              <div class="selection-box" id="selectionBox" style="display: none;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content 2: Component Inventory Cards -->
+      <div class="tab-pane" id="tab-inventory">
+        <div class="inventory-controls">
+          <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="componentFilter" placeholder="Filter by type (resistor, capacitor, etc.)...">
+          </div>
+          <div class="filter-chips" id="classFilterChips">
+            <button class="filter-chip active" data-class="all">All</button>
+          </div>
+        </div>
+
+        <div class="inventory-grid" id="inventoryGrid">
+          <div class="empty-state">
+            <i class="fa-solid fa-microchip"></i>
+            <p>Component crops and classification cards will appear here.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content 3: SPICE Netlist -->
+      <div class="tab-pane" id="tab-spice">
+        <div class="editor-header">
+          <div class="file-tag">
+            <i class="fa-solid fa-file-lines"></i>
+            <span id="spiceFilename">schematic.cir</span>
+          </div>
+          <button class="copy-btn" id="copySpiceBtn">
+            <i class="fa-solid fa-copy"></i> Copy Code
+          </button>
+        </div>
+        <div class="code-container">
+          <pre><code id="spiceCodeBlock" class="language-spice">* Click "Convert to SPICE Netlist" to generate circuit code...</code></pre>
+        </div>
+      </div>
+
+      <!-- Tab Content 4: JSON Graph -->
+      <div class="tab-pane" id="tab-json">
+        <div class="editor-header">
+          <div class="file-tag">
+            <i class="fa-solid fa-brackets-curly"></i>
+            <span>circuit_graph.json</span>
+          </div>
+          <button class="copy-btn" id="copyJsonBtn">
+            <i class="fa-solid fa-copy"></i> Copy JSON
+          </button>
+        </div>
+        <div class="code-container">
+          <pre><code id="jsonCodeBlock">{}</code></pre>
+        </div>
+      </div>
+
+      <!-- Tab Content 5: Engine Logs -->
+      <div class="tab-pane" id="tab-logs">
+        <div class="editor-header">
+          <div class="file-tag">
+            <i class="fa-solid fa-terminal"></i>
+            <span>Pipeline Output Terminal</span>
+          </div>
+          <button class="copy-btn" id="clearLogsBtn">
+            <i class="fa-solid fa-eraser"></i> Clear
+          </button>
+        </div>
+        <div class="terminal-body" id="terminalBody">
+          <div class="log-line log-info">[SYSTEM] PaperToCAD Web Studio ready.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast">Copied to clipboard!</div>
+
+  <script src="app.js"></script>
+</body>
+</html>

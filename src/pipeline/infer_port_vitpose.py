@@ -11,7 +11,13 @@ import numpy as np
 from PIL import Image
 
 # ============ OFFICIAL MMPose Topdown APIs ============
-from mmpose.apis import init_model, inference_topdown
+try:
+    from mmpose.apis import init_model, inference_topdown
+    MMPOSE_AVAILABLE = True
+except Exception:
+    MMPOSE_AVAILABLE = False
+    init_model = None
+    inference_topdown = None
 
 from path_config import cfg_get, project_path
 
@@ -803,7 +809,12 @@ def run_official_topdown(model, img_path: str) -> Tuple[List[List[float]], List[
 
 
 def main():
+    if not MMPOSE_AVAILABLE:
+        print("[WARN] mmpose is not installed in this environment. Skipping ViTPose port landmark estimation.")
+        return
+
     json_list = sorted(glob(os.path.join(GRAPH_JSON_DIR, "*_graph.json")))
+
     if not json_list:
         print("[WARN] no graph json found in", GRAPH_JSON_DIR)
         return
