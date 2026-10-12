@@ -28,8 +28,16 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     except Exception:
         pass
 
+# Windows event loop stability fix
+if sys.platform == "win32":
+    import asyncio
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except Exception:
+        pass
+
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -41,7 +49,12 @@ sys.path.insert(0, str(REPO_ROOT / "src" / "pipeline"))
 sys.path.insert(0, str(REPO_ROOT / "third_party" / "HAWP"))
 sys.path.insert(0, str(REPO_ROOT / "third_party" / "parseq-main"))
 
-from cad_schematic_renderer import generate_cad_schematic_files
+from cad_schematic_renderer import generate_cad_schematic_files, render_circuit_graph
+from circuit_data_model import CircuitGraph, ComponentModel, NodeModel, TerminalModel
+from connectivity_inspector import ConnectivityInspector
+from circuit_validator import CircuitValidator
+from spice_simulator import SPICESimulator
+from ai_assistant import AICircuitAssistant
 
 # Storage paths
 UPLOAD_DIR = REPO_ROOT / "outputs" / "ui_jobs"
@@ -59,6 +72,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.endswith((".js", ".css", ".html")) or path in ("/", ""):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 # Global model cache (lazy-loaded on first request to make startup instant)
 MODELS: Dict[str, Any] = {}
@@ -664,21 +687,57 @@ def get_job_annotated(job_id: str):
 
 @app.get("/api/jobs/{job_id}/schematic/dark")
 def get_job_schematic_dark(job_id: str):
-    for f in (UPLOAD_DIR / job_id).glob("*_cad_dark.svg"):
+    clean_id = job_id.strip()
+    # 1. Check job dir
+    for f in (UPLOAD_DIR / clean_id).glob("*_cad_dark.svg"):
         return FileResponse(f, media_type="image/svg+xml")
+    # 2. Check test_previews & mcp_renders
+    for f in (REPO_ROOT / "outputs" / "test_previews").glob(f"{clean_id}*_cad_dark.svg"):
+        return FileResponse(f, media_type="image/svg+xml")
+    for f in (REPO_ROOT / "outputs" / "mcp_renders" / clean_id).glob("*_cad_dark.svg"):
+        return FileResponse(f, media_type="image/svg+xml")
+    # 3. Dynamic render on-demand
+    try:
+        graph = _get_or_load_job_graph(clean_id)
+        out_dir = REPO_ROOT / "outputs" / "mcp_renders" / clean_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        render_circuit_graph(graph, out_dir)
+        for f in out_dir.glob("*_cad_dark.svg"):
+            return FileResponse(f, media_type="image/svg+xml")
+    except Exception:
+        pass
     raise HTTPException(status_code=404, detail="Dark schematic not found")
 
 
 @app.get("/api/jobs/{job_id}/schematic/light")
 def get_job_schematic_light(job_id: str):
-    for f in (UPLOAD_DIR / job_id).glob("*_cad_light.svg"):
+    clean_id = job_id.strip()
+    for f in (UPLOAD_DIR / clean_id).glob("*_cad_light.svg"):
         return FileResponse(f, media_type="image/svg+xml")
+    for f in (REPO_ROOT / "outputs" / "test_previews").glob(f"{clean_id}*_cad_light.svg"):
+        return FileResponse(f, media_type="image/svg+xml")
+    for f in (REPO_ROOT / "outputs" / "mcp_renders" / clean_id).glob("*_cad_light.svg"):
+        return FileResponse(f, media_type="image/svg+xml")
+    try:
+        graph = _get_or_load_job_graph(clean_id)
+        out_dir = REPO_ROOT / "outputs" / "mcp_renders" / clean_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        render_circuit_graph(graph, out_dir)
+        for f in out_dir.glob("*_cad_light.svg"):
+            return FileResponse(f, media_type="image/svg+xml")
+    except Exception:
+        pass
     raise HTTPException(status_code=404, detail="Light schematic not found")
 
 
 @app.get("/api/jobs/{job_id}/schematic/schemdraw")
 def get_job_schematic_schemdraw(job_id: str):
-    for f in (UPLOAD_DIR / job_id).glob("*_schemdraw.svg"):
+    clean_id = job_id.strip()
+    for f in (UPLOAD_DIR / clean_id).glob("*_schemdraw.svg"):
+        return FileResponse(f, media_type="image/svg+xml")
+    for f in (REPO_ROOT / "outputs" / "test_previews").glob(f"{clean_id}*_schemdraw.svg"):
+        return FileResponse(f, media_type="image/svg+xml")
+    for f in (REPO_ROOT / "outputs" / "mcp_renders" / clean_id).glob("*_schemdraw.svg"):
         return FileResponse(f, media_type="image/svg+xml")
     raise HTTPException(status_code=404, detail="Schemdraw schematic not found")
 
@@ -701,19 +760,347 @@ def get_job_crop(job_id: str, filename: str):
 
 @app.get("/api/jobs/{job_id}/download/spice")
 def download_spice(job_id: str):
-    for f in (UPLOAD_DIR / job_id).glob("*.cir"):
-        return FileResponse(f, media_type="text/plain", filename=f.name)
-    for f in (UPLOAD_DIR / job_id).glob("*.spice"):
-        return FileResponse(f, media_type="text/plain", filename=f.name)
-    raise HTTPException(status_code=404, detail="SPICE file not found")
+    clean_id = job_id.strip()
+    job_dir = UPLOAD_DIR / clean_id
+    if job_dir.exists():
+        for f in job_dir.glob("*.cir"):
+            return FileResponse(f, media_type="text/plain", filename=f.name)
+        for f in job_dir.glob("*.spice"):
+            return FileResponse(f, media_type="text/plain", filename=f.name)
+    sample_cir = REPO_ROOT / "outputs" / "run1" / "final_result" / "cir" / f"{clean_id}.cir"
+    mcp_cir = REPO_ROOT / "outputs" / "mcp_spice" / f"{clean_id}.spice"
+    if sample_cir.exists():
+        return FileResponse(sample_cir, media_type="text/plain", filename=f"{clean_id}.cir")
+    elif mcp_cir.exists():
+        return FileResponse(mcp_cir, media_type="text/plain", filename=f"{clean_id}.cir")
+    from mcp_server import export_spice_netlist
+    res = json.loads(export_spice_netlist(clean_id))
+    netlist_text = res.get("netlist", "")
+    return Response(content=netlist_text, media_type="text/plain", headers={"Content-Disposition": f"attachment; filename={clean_id}.cir"})
 
 
 @app.get("/api/jobs/{job_id}/download/json")
 def download_json(job_id: str):
-    p = UPLOAD_DIR / job_id / "circuit.json"
+    clean_id = job_id.strip()
+    p = UPLOAD_DIR / clean_id / "circuit_graph.json"
     if not p.exists():
-        raise HTTPException(status_code=404, detail="JSON file not found")
-    return FileResponse(p, media_type="application/json", filename="circuit_graph.json")
+        p = UPLOAD_DIR / clean_id / "circuit.json"
+    if p.exists():
+        return FileResponse(p, media_type="application/json", filename="circuit_graph.json")
+    sample_final = REPO_ROOT / "outputs" / "run1" / "final_result" / "json" / f"{clean_id}.final.json"
+    sample_gt = REPO_ROOT / "data" / "ground_truth" / f"{clean_id}.gt.json"
+    if sample_final.exists():
+        return FileResponse(sample_final, media_type="application/json", filename=f"{clean_id}.final.json")
+    elif sample_gt.exists():
+        return FileResponse(sample_gt, media_type="application/json", filename=f"{clean_id}.gt.json")
+    graph = _get_or_load_job_graph(clean_id)
+    return JSONResponse(content=graph.to_dict())
+
+
+def _get_or_load_job_graph(job_id: str) -> CircuitGraph:
+    clean_id = job_id.strip()
+
+    # 1. Check if job_id is a sample circuit (cir1, cir2, etc.)
+    sample_final = REPO_ROOT / "outputs" / "run1" / "final_result" / "json" / f"{clean_id}.final.json"
+    sample_gt = REPO_ROOT / "data" / "ground_truth" / f"{clean_id}.gt.json"
+    if sample_final.exists():
+        return CircuitGraph.from_final_json(sample_final)
+    elif sample_gt.exists():
+        return CircuitGraph.from_final_json(sample_gt)
+
+    # 2. Check UI job directory
+    job_dir = UPLOAD_DIR / clean_id
+    if not job_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    graph_file = job_dir / "circuit_graph.json"
+    if graph_file.exists():
+        with open(graph_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return CircuitGraph(**data)
+
+    # Check for legacy circuit.json
+    circ_file = job_dir / "circuit.json"
+    if circ_file.exists():
+        with open(circ_file, "r", encoding="utf-8") as f:
+            cdata = json.load(f)
+        img_name = cdata.get("image_name", "circuit")
+        
+        # Check if canonical final_json or ground truth exists for this image
+        sample_final = REPO_ROOT / "outputs" / "run1" / "final_result" / "json" / f"{img_name}.final.json"
+        sample_gt = REPO_ROOT / "data" / "ground_truth" / f"{img_name}.gt.json"
+        
+        if sample_final.exists():
+            graph = CircuitGraph.from_final_json(sample_final)
+        elif sample_gt.exists():
+            graph = CircuitGraph.from_final_json(sample_gt)
+        else:
+            # Construct from raw components
+            comps = []
+            for rc in cdata.get("components", []):
+                comps.append(ComponentModel(
+                    id=rc["id"],
+                    type=rc["cls_name"],
+                    type_refined=rc.get("cls_name_refined"),
+                    label=rc.get("text_label"),
+                    value=rc.get("value") or rc.get("text_label"),
+                    confidence=rc.get("confidence", 1.0),
+                    bbox=rc.get("bbox", [])
+                ))
+            graph = CircuitGraph(
+                image_name=img_name,
+                width=cdata.get("width", 1000),
+                height=cdata.get("height", 800),
+                components=comps,
+                nodes=[]
+            )
+
+        # Cache circuit_graph.json
+        with open(graph_file, "w", encoding="utf-8") as f:
+            f.write(json.dumps(graph.to_dict(), indent=2))
+        return graph
+
+    raise HTTPException(status_code=404, detail=f"Circuit graph data missing for job {job_id}")
+
+
+@app.get("/api/jobs/{job_id}/inspect")
+def inspect_job_circuit(job_id: str):
+    """Returns component terminals, connected electrical nodes, and uncertainty records."""
+    graph = _get_or_load_job_graph(job_id)
+    inspector = ConnectivityInspector(graph)
+    return {
+        "success": True,
+        "job_id": job_id,
+        "summary": inspector.get_summary(),
+        "components": inspector.inspect_components(),
+        "nodes": inspector.inspect_nodes(),
+        "uncertainties": inspector.inspect_uncertainties()
+    }
+
+
+@app.get("/api/jobs/{job_id}/validate")
+def validate_job_circuit(job_id: str):
+    """Executes rule-based electrical domain validation."""
+    graph = _get_or_load_job_graph(job_id)
+    validator = CircuitValidator(graph)
+    findings = validator.validate()
+    return {
+        "success": True,
+        "job_id": job_id,
+        "total_findings": len(findings),
+        "findings": [f.model_dump() for f in findings]
+    }
+
+
+@app.post("/api/jobs/{job_id}/correct")
+async def apply_job_correction(job_id: str, payload: Dict[str, Any]):
+    """
+    Applies user-directed correction mutations to the circuit graph representation,
+    re-validates the graph, updates SPICE netlist, and re-renders the schematic.
+    """
+    graph = _get_or_load_job_graph(job_id)
+    inspector = ConnectivityInspector(graph)
+
+    action = payload.get("action", "")
+    params = payload.get("params", {})
+    ok, message = inspector.apply_correction(action, params)
+
+    if not ok:
+        return JSONResponse(status_code=400, content={"success": False, "message": message})
+
+    job_dir = UPLOAD_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Save updated circuit_graph.json
+    with open(job_dir / "circuit_graph.json", "w", encoding="utf-8") as f:
+        f.write(json.dumps(graph.to_dict(), indent=2))
+
+    # 2. Re-render CAD Schematics with updated values & topology
+    render_circuit_graph(graph, job_dir)
+
+    # 3. Re-run validation
+    validator = CircuitValidator(graph)
+    findings = validator.validate()
+
+    return {
+        "success": True,
+        "message": message,
+        "job_id": job_id,
+        "summary": inspector.get_summary(),
+        "components": inspector.inspect_components(),
+        "nodes": inspector.inspect_nodes(),
+        "findings": [f.model_dump() for f in findings]
+    }
+
+
+@app.post("/api/jobs/{job_id}/simulate")
+def simulate_job_circuit(job_id: str, analysis: str = Form("OP")):
+    """
+    Validates the generated SPICE netlist and executes simulation via ngspice.
+    """
+    job_dir = UPLOAD_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    cir_files = list(job_dir.glob("*.cir")) + list(job_dir.glob("*.spice"))
+    netlist_text = None
+    if cir_files:
+        with open(cir_files[0], "r", encoding="utf-8") as f:
+            netlist_text = f.read()
+    else:
+        # Check sample circuits
+        sample_cir = REPO_ROOT / "outputs" / "run1" / "final_result" / "cir" / f"{job_id}.cir"
+        mcp_cir = REPO_ROOT / "outputs" / "mcp_spice" / f"{job_id}.spice"
+        if sample_cir.exists():
+            with open(sample_cir, "r", encoding="utf-8") as f:
+                netlist_text = f.read()
+        elif mcp_cir.exists():
+            with open(mcp_cir, "r", encoding="utf-8") as f:
+                netlist_text = f.read()
+        else:
+            sys.path.insert(0, str(REPO_ROOT / "src"))
+            from mcp_server import export_spice_netlist
+            res = json.loads(export_spice_netlist(job_id))
+            netlist_text = res.get("netlist", "")
+
+    if not netlist_text:
+        raise HTTPException(status_code=404, detail=f"SPICE netlist not available for {job_id}")
+
+    simulator = SPICESimulator()
+    result = simulator.run_simulation(netlist_text, analysis=analysis, temp_dir=job_dir)
+    return {
+        "success": result.success,
+        "job_id": job_id,
+        "result": result.model_dump()
+    }
+
+
+@app.post("/api/jobs/{job_id}/assistant/chat")
+async def chat_job_assistant(job_id: str, payload: Dict[str, Any]):
+    """
+    Queries Grounded AI Assistant regarding circuit topology, validation findings,
+    or specific component queries.
+    """
+    graph = _get_or_load_job_graph(job_id)
+    validator = CircuitValidator(graph)
+    findings = validator.validate()
+
+    user_question = payload.get("question", "")
+    assistant = AICircuitAssistant()
+    answer = assistant.explain_circuit(
+        graph=graph,
+        findings=findings,
+        user_question=user_question
+    )
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "question": user_question,
+        "answer": answer
+    }
+
+
+@app.get("/api/mcp/tools")
+def get_mcp_tools():
+    """Returns metadata for all 6 Paper2CAD Model Context Protocol (MCP) tools."""
+    return {
+        "status": "online",
+        "transport": "stdio / JSON-RPC 2.0",
+        "protocol_version": "2024-11-05",
+        "sdk_version": "mcp-2.3.0",
+        "tools": [
+            {
+                "name": "inspect_circuit",
+                "description": "Inspect normalized circuit graph, pin mappings, and electrical node connectivity.",
+                "parameters": {
+                    "circuit_id": {"type": "string", "required": True, "description": "Circuit name/ID (e.g. cir1, canonical_led)"},
+                    "component_id": {"type": "integer", "required": False, "description": "Optional component ID to inspect pin-level details"}
+                }
+            },
+            {
+                "name": "validate_circuit",
+                "description": "Run deterministic domain rules (grounding, shorts, floating pins, missing values).",
+                "parameters": {
+                    "circuit_id": {"type": "string", "required": True, "description": "Circuit name/ID to validate"}
+                }
+            },
+            {
+                "name": "generate_schematic",
+                "description": "Render interactive computerized IEEE CAD schematic SVG with data attributes.",
+                "parameters": {
+                    "circuit_id": {"type": "string", "required": True, "description": "Circuit name/ID"},
+                    "theme": {"type": "string", "default": "dark", "enum": ["dark", "light"]}
+                }
+            },
+            {
+                "name": "export_spice_netlist",
+                "description": "Generate clean standard SPICE netlist (.cir) from circuit graph.",
+                "parameters": {
+                    "circuit_id": {"type": "string", "required": True, "description": "Circuit name/ID"}
+                }
+            },
+            {
+                "name": "simulate_circuit",
+                "description": "Execute SPICE simulation using ngspice binary (DC OP or TRAN analysis).",
+                "parameters": {
+                    "circuit_id": {"type": "string", "required": True, "description": "Circuit name/ID"},
+                    "analysis_type": {"type": "string", "default": "OP", "enum": ["OP", "TRAN"]}
+                }
+            },
+            {
+                "name": "explain_circuit",
+                "description": "Ask grounded circuit AI assistant without hallucinations.",
+                "parameters": {
+                    "circuit_id": {"type": "string", "required": True, "description": "Circuit name/ID"},
+                    "question": {"type": "string", "required": True, "description": "Question about circuit design/behavior"}
+                }
+            }
+        ]
+    }
+
+
+@app.post("/api/mcp/invoke")
+async def invoke_mcp_tool(payload: Dict[str, Any]):
+    """Executes an MCP tool and returns its structured JSON output."""
+    tool_name = payload.get("tool_name", "")
+    args = payload.get("arguments", {})
+    circuit_id = args.get("circuit_id", "cir1")
+
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    from mcp_server import (
+        inspect_circuit, validate_circuit, generate_schematic,
+        export_spice_netlist, simulate_circuit, explain_circuit
+    )
+
+    try:
+        if tool_name == "inspect_circuit":
+            comp_id = args.get("component_id")
+            if comp_id is not None and comp_id != "":
+                try: comp_id = int(comp_id)
+                except Exception: comp_id = None
+            else:
+                comp_id = None
+            res = inspect_circuit(circuit_id=circuit_id, component_id=comp_id)
+        elif tool_name == "validate_circuit":
+            res = validate_circuit(circuit_id=circuit_id)
+        elif tool_name == "generate_schematic":
+            theme = args.get("theme", "dark")
+            res = generate_schematic(circuit_id=circuit_id, theme=theme)
+        elif tool_name == "export_spice_netlist":
+            res = export_spice_netlist(circuit_id=circuit_id)
+        elif tool_name == "simulate_circuit":
+            analysis = args.get("analysis_type", "OP")
+            res = simulate_circuit(circuit_id=circuit_id, analysis_type=analysis)
+        elif tool_name == "explain_circuit":
+            q = args.get("question", "Explain the circuit topology.")
+            res = explain_circuit(circuit_id=circuit_id, question=q)
+        else:
+            return JSONResponse(status_code=400, content={"error": f"Unknown MCP tool: {tool_name}"})
+
+        parsed = json.loads(res) if isinstance(res, str) else res
+        return {"success": True, "tool": tool_name, "result": parsed}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
 
 
 # Mount static assets

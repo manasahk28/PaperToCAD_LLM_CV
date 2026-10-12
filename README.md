@@ -73,22 +73,24 @@ Ensure model weights exist in the `weights/` directory:
 
 ---
 
-## 🚀 How to Run
+## 🚀 Quick Start (Single Entry Point)
 
-### Method 1: Interactive Web Studio (GUI)
+To run the entire Paper2CAD application, use the single entry point:
 
-The Web Studio provides a browser-based pair-programming interface to test and inspect circuits.
+```bash
+python main.py
+```
 
-1. **Start the studio server**:
-   ```bash
-   python run_ui.py
-   ```
-2. **Access the application**:
-   Open **[http://localhost:8000](http://localhost:8000)** in any modern web browser.
+*Or on Windows, simply double-click **`start.bat`**.*
 
-3. **Using the Web Studio**:
-   - **Upload or Choose a Sample**: Drag & drop any photo of a hand-drawn circuit sketch, or click on one of the sample presets (`cir1` through `cir5`).
-   - **Run Inference**: Adjust the confidence threshold slider if desired (default `0.35`), then click **"Convert to SPICE Netlist"**.
+This automatically launches the server on `http://localhost:8000` and opens your browser.
+
+### Advanced Flags
+```bash
+python main.py --port 8080      # Run on custom port
+python main.py --no-browser     # Run in headless/server mode
+python main.py --mcp            # Launch official Model Context Protocol (MCP) server
+```
    - **Explore View Modes**:
      - **Computerized CAD Schematic**: Clean, IEEE-standardized orthogonal CAD vector drawing with Dark / Light Blueprint themes.
      - **Schemdraw**: Normalized textbook-grade electronic circuit diagram.

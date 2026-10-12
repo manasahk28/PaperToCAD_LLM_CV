@@ -1,0 +1,233 @@
+{
+  "image_name": "canonical_led",
+  "width": 600,
+  "height": 400,
+  "components": [
+    {
+      "id": 1,
+      "cls_id": null,
+      "type": "voltage.battery",
+      "type_refined": null,
+      "subtype": null,
+      "subtype_conf": null,
+      "label": "V1",
+      "value": "9V",
+      "confidence": 1.0,
+      "bbox": [
+        50.0,
+        100.0,
+        120.0,
+        250.0
+      ],
+      "terminals": [
+        {
+          "id": 1,
+          "name": "+",
+          "side": null,
+          "x": 85.0,
+          "y": 100.0,
+          "component_id": 1,
+          "connected_node_id": 1,
+          "confidence": 1.0
+        },
+        {
+          "id": 2,
+          "name": "-",
+          "side": null,
+          "x": 85.0,
+          "y": 250.0,
+          "component_id": 1,
+          "connected_node_id": 0,
+          "confidence": 1.0
+        }
+      ],
+      "crop_url": null,
+      "properties": {}
+    },
+    {
+      "id": 2,
+      "cls_id": null,
+      "type": "resistor",
+      "type_refined": null,
+      "subtype": null,
+      "subtype_conf": null,
+      "label": "R1",
+      "value": "330\u03a9",
+      "confidence": 1.0,
+      "bbox": [
+        180.0,
+        80.0,
+        320.0,
+        120.0
+      ],
+      "terminals": [
+        {
+          "id": 3,
+          "name": "T1",
+          "side": null,
+          "x": 180.0,
+          "y": 100.0,
+          "component_id": 2,
+          "connected_node_id": 1,
+          "confidence": 1.0
+        },
+        {
+          "id": 4,
+          "name": "T2",
+          "side": null,
+          "x": 320.0,
+          "y": 100.0,
+          "component_id": 2,
+          "connected_node_id": 2,
+          "confidence": 1.0
+        }
+      ],
+      "crop_url": null,
+      "properties": {}
+    },
+    {
+      "id": 3,
+      "cls_id": null,
+      "type": "diode.light_emitting",
+      "type_refined": null,
+      "subtype": null,
+      "subtype_conf": null,
+      "label": "LED1",
+      "value": "Red",
+      "confidence": 1.0,
+      "bbox": [
+        380.0,
+        80.0,
+        460.0,
+        200.0
+      ],
+      "terminals": [
+        {
+          "id": 5,
+          "name": "A",
+          "side": null,
+          "x": 380.0,
+          "y": 100.0,
+          "component_id": 3,
+          "connected_node_id": 2,
+          "confidence": 1.0
+        },
+        {
+          "id": 6,
+          "name": "K",
+          "side": null,
+          "x": 460.0,
+          "y": 100.0,
+          "component_id": 3,
+          "connected_node_id": 0,
+          "confidence": 1.0
+        }
+      ],
+      "crop_url": null,
+      "properties": {}
+    },
+    {
+      "id": 4,
+      "cls_id": null,
+      "type": "gnd",
+      "type_refined": null,
+      "subtype": null,
+      "subtype_conf": null,
+      "label": "GND",
+      "value": "0",
+      "confidence": 1.0,
+      "bbox": [
+        260.0,
+        240.0,
+        310.0,
+        290.0
+      ],
+      "terminals": [
+        {
+          "id": 7,
+          "name": "GND",
+          "side": null,
+          "x": 285.0,
+          "y": 240.0,
+          "component_id": 4,
+          "connected_node_id": 0,
+          "confidence": 1.0
+        }
+      ],
+      "crop_url": null,
+      "properties": {}
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "name": "0",
+      "is_ground": true,
+      "connections": [
+        {
+          "component_id": 1,
+          "terminal_id": 2,
+          "terminal_name": "-",
+          "confidence": 1.0
+        },
+        {
+          "component_id": 3,
+          "terminal_id": 6,
+          "terminal_name": "K",
+          "confidence": 1.0
+        },
+        {
+          "component_id": 4,
+          "terminal_id": 7,
+          "terminal_name": "GND",
+          "confidence": 1.0
+        }
+      ],
+      "associated_wire_ids": []
+    },
+    {
+      "id": 1,
+      "name": "N1",
+      "is_ground": false,
+      "connections": [
+        {
+          "component_id": 1,
+          "terminal_id": 1,
+          "terminal_name": "+",
+          "confidence": 1.0
+        },
+        {
+          "component_id": 2,
+          "terminal_id": 3,
+          "terminal_name": "T1",
+          "confidence": 1.0
+        }
+      ],
+      "associated_wire_ids": []
+    },
+    {
+      "id": 2,
+      "name": "N2",
+      "is_ground": false,
+      "connections": [
+        {
+          "component_id": 2,
+          "terminal_id": 4,
+          "terminal_name": "T2",
+          "confidence": 1.0
+        },
+        {
+          "component_id": 3,
+          "terminal_id": 5,
+          "terminal_name": "A",
+          "confidence": 1.0
+        }
+      ],
+      "associated_wire_ids": []
+    }
+  ],
+  "wires": [],
+  "junctions": [],
+  "uncertainties": [],
+  "metadata": {}
+}

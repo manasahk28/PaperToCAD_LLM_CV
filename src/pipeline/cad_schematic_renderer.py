@@ -204,6 +204,12 @@ class CADSchematicRenderer:
           .cad-text {{ font-family: 'JetBrains Mono', 'Plus Jakarta Sans', monospace, sans-serif; font-weight: 600; }}
           .cad-val {{ font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; fill: {self.subtext_color}; }}
           .cad-lbl {{ font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 800; fill: {self.text_color}; }}
+          .cad-component-group {{ cursor: pointer; transition: filter 0.2s ease, transform 0.2s ease; }}
+          .cad-component-group:hover {{ filter: drop-shadow(0 0 8px #00f0ff); }}
+          .cad-component-group.selected {{ filter: drop-shadow(0 0 12px #f59e0b); }}
+          .cad-uncertain-badge {{ fill: #f59e0b; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold; }}
+          .cad-junction-dot {{ cursor: pointer; transition: r 0.2s ease; }}
+          .cad-junction-dot:hover {{ r: 6.5; }}
         </style>
         ''')
         svg.append('</defs>')
@@ -328,7 +334,7 @@ class CADSchematicRenderer:
             eff_s = self._refine_component_type(left_source)
             desig_s = left_source.get("designator") or "V1"
             val_s = left_source.get("value") or left_source.get("text_label") or ""
-            svg.append(self._render_symbol_svg(eff_s, left_source["_cx"], left_source["_cy"], is_horiz=False, desig=desig_s, val_text=val_s))
+            svg.append(self._render_symbol_svg(eff_s, left_source["_cx"], left_source["_cy"], is_horiz=False, desig=desig_s, val_text=val_s, comp_id=left_source.get("id")))
 
             # Draw top passives horizontally
             for p in top_passives:
@@ -339,12 +345,13 @@ class CADSchematicRenderer:
                 if "\n" in desig_p:
                     parts = desig_p.split("\n", 1)
                     desig_p, val_p = parts[0], parts[1]
-                svg.append(self._render_symbol_svg(eff_p, p["_cx"], p.get("_snap_cy", p["_cy"]), is_horiz=True, desig=desig_p, val_text=val_p))
+                svg.append(self._render_symbol_svg(eff_p, p["_cx"], p.get("_snap_cy", p["_cy"]), is_horiz=True, desig=desig_p, val_text=val_p, comp_id=p.get("id")))
 
             # Draw Ground symbol on bottom rail
             gnd_x = (left_source["_cx"] + (max(p["_cx"] for p in top_passives) + 95.0)) * 0.65 if top_passives else left_source["_cx"] + 150.0
             y_bottom = max(left_source["_cy"] + 110.0, (min(p["_cy"] for p in top_passives) if top_passives else 200.0) + 220.0)
-            svg.append(self._render_symbol_svg("gnd", gnd_x, y_bottom + 25.0, is_horiz=True, desig="GND", val_text=""))
+            gnd_id = gnd_comp.get("id") if gnd_comp else None
+            svg.append(self._render_symbol_svg("gnd", gnd_x, y_bottom + 25.0, is_horiz=True, desig="GND", val_text="", comp_id=gnd_id))
 
         else:
             for r in rows:
@@ -378,7 +385,7 @@ class CADSchematicRenderer:
                     prefix_counters[pref] = prefix_counters.get(pref, 0) + 1
                     val_clean = c.get("value") or val_text
 
-                    sym_svg = self._render_symbol_svg(eff_type, cx, cy, is_horiz, desig, val_clean)
+                    sym_svg = self._render_symbol_svg(eff_type, cx, cy, is_horiz, desig, val_clean, comp_id=c.get("id"))
                     svg.append(sym_svg)
 
             if topo_type == "parallel_ladder":
@@ -405,13 +412,15 @@ class CADSchematicRenderer:
         cy: float,
         is_horiz: bool,
         desig: str,
-        val_text: str
+        val_text: str,
+        comp_id: Optional[int] = None
     ) -> str:
         """
         Emits clean SVG elements for a single standardized electronic component symbol.
         """
         rot = 0 if is_horiz else 90
-        elements = [f'<g transform="translate({cx:.1f}, {cy:.1f}) rotate({rot})">']
+        comp_attr = f' data-comp-id="{comp_id}"' if comp_id is not None else ""
+        elements = [f'<g class="cad-component-group"{comp_attr} transform="translate({cx:.1f}, {cy:.1f}) rotate({rot})">']
 
         if "resistor" in c_type:
             # IEEE standard zig-zag resistor
@@ -664,3 +673,25 @@ def generate_cad_schematic_files(
         "cad_light_svg": f"{image_name}_cad_light.svg",
         "schemdraw_svg": f"{image_name}_schemdraw.svg"
     }
+
+
+def render_circuit_graph(graph: Any, output_dir: Path) -> Dict[str, str]:
+    """
+    Renders digital schematic files directly from a Paper2CAD CircuitGraph instance.
+    """
+    comps_dict = []
+    for c in graph.components:
+        comps_dict.append({
+            "id": c.id,
+            "cls_id": c.cls_id,
+            "cls_name": c.type,
+            "cls_name_refined": c.type_refined,
+            "designator": c.label,
+            "text_label": c.value or c.label,
+            "value": c.value,
+            "confidence": c.confidence,
+            "bbox": c.bbox,
+            "is_uncertain": any(u.target_id == c.id for u in getattr(graph, "uncertainties", []))
+        })
+    return generate_cad_schematic_files(graph.image_name, graph.width, graph.height, comps_dict, output_dir)
+

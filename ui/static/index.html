@@ -14,7 +14,7 @@
   <!-- FontAwesome for clean icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=2.2.2">
 </head>
 <body>
   <!-- Background Glow & Grid Canvas -->
@@ -77,6 +77,9 @@
           </button>
           <button class="sample-chip" data-sample="cir5">
             <i class="fa-solid fa-sliders"></i> cir5 (Passive)
+          </button>
+          <button class="sample-chip" data-sample="canonical_led">
+            <i class="fa-solid fa-lightbulb"></i> canonical_led (LED Loop)
           </button>
         </div>
       </div>
@@ -225,19 +228,34 @@
       <!-- Tabs Navigation -->
       <div class="dashboard-tabs">
         <button class="tab-btn active" data-tab="tab-overlay">
-          <i class="fa-solid fa-microchip"></i> Computerized CAD Schematic
+          <i class="fa-solid fa-microchip"></i> CAD Schematic
+        </button>
+        <button class="tab-btn" data-tab="tab-inspector">
+          <i class="fa-solid fa-diagram-project"></i> Connectivity Inspector
+        </button>
+        <button class="tab-btn" data-tab="tab-validation">
+          <i class="fa-solid fa-shield-halved"></i> Validation <span class="tab-badge" id="validationBadge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-ai">
+          <i class="fa-solid fa-brain"></i> AI Assistant
+        </button>
+        <button class="tab-btn" data-tab="tab-sim">
+          <i class="fa-solid fa-chart-line"></i> SPICE Simulation
+        </button>
+        <button class="tab-btn" data-tab="tab-mcp">
+          <i class="fa-solid fa-network-wired"></i> MCP Protocol <span class="tab-badge" id="mcpBadge">6</span>
         </button>
         <button class="tab-btn" data-tab="tab-inventory">
-          <i class="fa-solid fa-boxes-stacked"></i> Component Inventory <span class="tab-badge" id="inventoryBadge">0</span>
+          <i class="fa-solid fa-boxes-stacked"></i> Inventory <span class="tab-badge" id="inventoryBadge">0</span>
         </button>
         <button class="tab-btn" data-tab="tab-spice">
-          <i class="fa-solid fa-terminal"></i> SPICE Netlist
+          <i class="fa-solid fa-terminal"></i> Netlist
         </button>
         <button class="tab-btn" data-tab="tab-json">
-          <i class="fa-solid fa-network-wired"></i> Structured JSON
+          <i class="fa-solid fa-network-wired"></i> JSON Graph
         </button>
         <button class="tab-btn" data-tab="tab-logs">
-          <i class="fa-solid fa-scroll"></i> Engine Logs
+          <i class="fa-solid fa-scroll"></i> Logs
         </button>
       </div>
 
@@ -246,17 +264,17 @@
         <div class="viewer-container">
           <div class="viewer-toolbar">
             <div class="view-mode-toggle">
-              <button class="mode-btn active" id="btnShowSchematic">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Computerized Schematic
+              <button class="mode-btn active" id="btnShowDual">
+                <i class="fa-solid fa-columns"></i> Side-by-Side View
+              </button>
+              <button class="mode-btn" id="btnShowSchematic">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Full CAD Schematic
               </button>
               <button class="mode-btn" id="btnShowSchemdraw">
                 <i class="fa-solid fa-bezier-curve"></i> Schemdraw
               </button>
               <button class="mode-btn" id="btnShowAnnotated">
-                <i class="fa-solid fa-tags"></i> Detection Boxes
-              </button>
-              <button class="mode-btn" id="btnShowOriginal">
-                <i class="fa-solid fa-image"></i> Hand Drawing
+                <i class="fa-solid fa-tags"></i> Sketch BBoxes
               </button>
             </div>
 
@@ -276,26 +294,305 @@
             </div>
           </div>
 
-          <div class="canvas-viewport" id="canvasViewport">
-            <!-- Placeholder state before first run -->
-            <div class="viewport-placeholder" id="viewportPlaceholder">
-              <div class="placeholder-graphic">
-                <i class="fa-solid fa-draw-polygon"></i>
+          <!-- Dual Side-by-Side Viewport -->
+          <div class="dual-viewport-grid" id="dualViewportGrid">
+            <!-- Left Pane: Hand-Drawn Sketch / Detections -->
+            <div class="viewport-card">
+              <div class="viewport-header">
+                <span><i class="fa-solid fa-pencil"></i> Hand-Drawn Sketch & Port Detections</span>
+                <span class="viewport-badge" id="sketchTagBadge">Input Sketch</span>
               </div>
-              <h3>No Circuit Analyzed Yet</h3>
-              <p>Select a sample circuit or upload a photo of your hand-drawn diagram and click <strong>"Convert to SPICE Netlist"</strong>.</p>
+              <div class="canvas-viewport" id="sketchCanvasViewport">
+                <div class="image-wrapper" id="sketchImageWrapper">
+                  <img id="sketchDisplayImg" src="/api/samples/image/cir1.jpg" alt="Hand-Drawn Sketch">
+                  <div class="selection-box" id="selectionBox" style="display: none;"></div>
+                </div>
+              </div>
             </div>
 
-            <!-- Active image display -->
-            <div class="image-wrapper" id="imageWrapper" style="display: none;">
-              <img id="mainDisplayImg" src="" alt="Circuit Output">
-              <div class="selection-box" id="selectionBox" style="display: none;"></div>
+            <!-- Right Pane: Digital Computerized CAD Schematic -->
+            <div class="viewport-card">
+              <div class="viewport-header">
+                <span><i class="fa-solid fa-microchip"></i> Digital Reconstructed CAD Schematic</span>
+                <span class="viewport-badge success" id="cadTagBadge">IEEE Standard CAD</span>
+              </div>
+              <div class="canvas-viewport" id="cadCanvasViewport">
+                <div class="image-wrapper" id="cadImageWrapper">
+                  <img id="mainDisplayImg" src="/api/jobs/cir1/schematic/dark" alt="Computerized Schematic">
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Tab Content 2: Component Inventory Cards -->
+      <!-- Tab Content 2: Connectivity Inspector -->
+      <div class="tab-pane" id="tab-inspector">
+        <div class="inspector-layout">
+          <!-- Left: Electrical Nodes / Nets -->
+          <div class="inspector-column">
+            <div class="column-header">
+              <div class="column-title">
+                <i class="fa-solid fa-circle-nodes"></i>
+                <span>Electrical Nodes / Nets</span>
+              </div>
+              <span class="column-hint" id="nodeCountLabel">0 nodes</span>
+            </div>
+            <div class="nodes-list" id="inspectorNodesList">
+              <div class="empty-state">
+                <i class="fa-solid fa-network-wired"></i>
+                <p>Run analysis to inspect electrical nodes.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Component Terminals & Correction Editor -->
+          <div class="inspector-column flex-2">
+            <div class="column-header">
+              <div class="column-title">
+                <i class="fa-solid fa-microchip"></i>
+                <span>Components, Terminals & Values</span>
+              </div>
+              <span class="column-hint">Click row to highlight</span>
+            </div>
+            <div class="component-inspector-table-wrap">
+              <table class="inspector-table" id="inspectorTable">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Type</th>
+                    <th>Value / Label</th>
+                    <th>Pins</th>
+                    <th>Connected Nodes</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="inspectorTableBody">
+                  <tr>
+                    <td colspan="6" class="text-center text-muted">No components loaded.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Inline Graph Edit Box -->
+            <div class="graph-edit-card" id="graphEditCard" style="display: none;">
+              <div class="edit-card-header">
+                <h4><i class="fa-solid fa-pen-to-square"></i> Correct Component <span id="editCompId">#0</span></h4>
+                <button class="btn-close-sm" id="closeEditBtn">&times;</button>
+              </div>
+              <div class="edit-form-row">
+                <div class="form-group">
+                  <label>Component Value</label>
+                  <input type="text" id="editValueInput" placeholder="e.g. 10k, 100mH, 5V">
+                </div>
+                <div class="form-group">
+                  <label>Refined Type</label>
+                  <select id="editTypeSelect">
+                    <option value="resistor">resistor</option>
+                    <option value="capacitor.unpolarized">capacitor</option>
+                    <option value="inductor">inductor</option>
+                    <option value="voltage.dc">voltage.dc</option>
+                    <option value="voltage.battery">voltage.battery</option>
+                    <option value="current.dc">current.dc</option>
+                    <option value="diode.light_emitting">diode.light_emitting (LED)</option>
+                    <option value="diode">diode</option>
+                    <option value="gnd">gnd (ground)</option>
+                  </select>
+                </div>
+                <button class="btn-primary-action" id="saveCompEditBtn">
+                  <i class="fa-solid fa-check"></i> Save & Re-render
+                </button>
+              </div>
+
+              <div class="edit-reconnect-row" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-glass); display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap;">
+                <div class="form-group">
+                  <label><i class="fa-solid fa-code-branch"></i> Terminal / Pin</label>
+                  <select id="editTerminalSelect">
+                    <option value="">Select Pin...</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label><i class="fa-solid fa-circle-nodes"></i> Target Node</label>
+                  <select id="editTargetNodeSelect">
+                    <option value="0">Node 0 (Ground)</option>
+                    <option value="1">Node 1 (N1)</option>
+                    <option value="2">Node 2 (N2)</option>
+                    <option value="3">Node 3 (N3)</option>
+                    <option value="4">Node 4 (N4)</option>
+                    <option value="5">Node 5 (N5)</option>
+                  </select>
+                </div>
+                <button class="btn-action" id="reconnectPinBtn">
+                  <i class="fa-solid fa-link"></i> Reconnect Pin
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content 3: Rule-Based Validation Findings -->
+      <div class="tab-pane" id="tab-validation">
+        <div class="validation-container">
+          <div class="validation-toolbar-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div class="validation-summary-strip" style="margin-bottom: 0;">
+              <div class="val-summary-pill error" id="summaryErrorsPill">
+                <i class="fa-solid fa-circle-xmark"></i> <span id="valErrorCount">0</span> Errors
+              </div>
+              <div class="val-summary-pill warning" id="summaryWarningsPill">
+                <i class="fa-solid fa-triangle-exclamation"></i> <span id="valWarningCount">0</span> Warnings
+              </div>
+              <div class="val-summary-pill info" id="summaryInfoPill">
+                <i class="fa-solid fa-circle-info"></i> <span id="valInfoCount">0</span> Notes
+              </div>
+            </div>
+            <button class="btn-action" id="revalidateBtn" title="Re-evaluate all electrical domain rules">
+              <i class="fa-solid fa-arrows-rotate"></i> Re-run Validation
+            </button>
+          </div>
+
+          <div class="validation-findings-list" id="validationFindingsList">
+            <div class="empty-state">
+              <i class="fa-solid fa-shield-check"></i>
+              <p>Validation results will appear here after analysis.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content 4: Grounded AI Circuit Assistant -->
+      <div class="tab-pane" id="tab-ai">
+        <div class="ai-assistant-container">
+          <div class="ai-quick-prompts">
+            <span class="quick-prompt-label"><i class="fa-solid fa-bolt"></i> Quick Queries:</span>
+            <button class="prompt-chip" data-q="Explain the overall circuit topology and how it operates.">
+              Circuit Overview
+            </button>
+            <button class="prompt-chip" data-q="What components are connected to Ground (Node 0)?">
+              Ground Connections
+            </button>
+            <button class="prompt-chip" data-q="Explain why any warnings were flagged and how to resolve them.">
+              Explain Warnings
+            </button>
+            <button class="prompt-chip" data-q="Is this circuit ready for SPICE simulation?">
+              SPICE Readiness
+            </button>
+          </div>
+
+          <div class="ai-chat-thread" id="aiChatThread">
+            <div class="ai-message assistant">
+              <div class="msg-avatar"><i class="fa-solid fa-robot"></i></div>
+              <div class="msg-body">
+                <strong>Paper2CAD Assistant</strong>
+                <p>Hello! I inspect your hand-drawn circuit using verified graph topology and validation findings. Ask me anything about components, connected nodes, or electrical behavior.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="ai-input-bar">
+            <input type="text" id="aiQuestionInput" placeholder="Ask about this circuit (e.g. 'What is connected to component #0?')...">
+            <button class="btn-send-ai" id="aiSendBtn">
+              <i class="fa-solid fa-paper-plane"></i> Ask
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content 5: SPICE Simulation -->
+      <div class="tab-pane" id="tab-sim">
+        <div class="sim-container">
+          <div class="sim-toolbar">
+            <div class="sim-controls">
+              <label>Analysis Type:</label>
+              <select id="simAnalysisSelect">
+                <option value="OP">DC Operating Point (.OP)</option>
+                <option value="TRAN">Transient Analysis (.TRAN 1u 10m)</option>
+              </select>
+              <button class="btn-primary-action" id="runSimBtn">
+                <i class="fa-solid fa-play"></i> Run ngspice Simulation
+              </button>
+            </div>
+            <div class="sim-status-pill" id="simStatusPill">
+              <span class="status-dot"></span>
+              <span id="simStatusText">Ready</span>
+            </div>
+          </div>
+
+          <div class="sim-results-grid">
+            <div class="sim-card">
+              <h4><i class="fa-solid fa-bolt"></i> Node Voltages</h4>
+              <div class="sim-table-wrap" id="simVoltagesWrap">
+                <p class="text-muted">No simulation executed yet.</p>
+              </div>
+            </div>
+            <div class="sim-card">
+              <h4><i class="fa-solid fa-arrows-split-up-and-left"></i> Device Currents</h4>
+              <div class="sim-table-wrap" id="simCurrentsWrap">
+                <p class="text-muted">No simulation executed yet.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="sim-console-card">
+            <h4><i class="fa-solid fa-terminal"></i> Simulator Diagnostic Log</h4>
+            <pre id="simConsoleOutput">Click "Run ngspice Simulation" to execute the synthesized netlist.</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content: Model Context Protocol (MCP) Hub -->
+      <div class="tab-pane" id="tab-mcp">
+        <div class="mcp-container">
+          <div class="mcp-header-bar">
+            <div class="mcp-status-pill">
+              <span class="status-dot"></span>
+              <span id="mcpServerStatus">MCP Server Online (stdio / JSON-RPC 2.0)</span>
+            </div>
+            <span class="mcp-sdk-badge"><i class="fa-solid fa-shield-halved"></i> Model Context Protocol 2.3.0 SDK</span>
+          </div>
+
+          <div class="mcp-tools-grid" id="mcpToolsGrid">
+            <!-- 6 MCP Tools cards dynamically populated -->
+          </div>
+
+          <div class="mcp-console-section">
+            <div class="mcp-console-header">
+              <h4><i class="fa-solid fa-play"></i> Interactive MCP Tool Runner</h4>
+              <span class="text-muted">Invoke official tools via JSON-RPC</span>
+            </div>
+            <div class="mcp-runner-form">
+              <div class="form-group">
+                <label>Select Tool</label>
+                <select id="mcpToolSelect">
+                  <option value="inspect_circuit">inspect_circuit</option>
+                  <option value="validate_circuit">validate_circuit</option>
+                  <option value="generate_schematic">generate_schematic</option>
+                  <option value="export_spice_netlist">export_spice_netlist</option>
+                  <option value="simulate_circuit">simulate_circuit</option>
+                  <option value="explain_circuit">explain_circuit</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Circuit ID</label>
+                <input type="text" id="mcpCircuitIdInput" value="cir1">
+              </div>
+              <div class="form-group flex-2">
+                <label>Argument (component_id / question / analysis / theme)</label>
+                <input type="text" id="mcpExtraArgInput" placeholder="e.g. 0 or 'What is connected to ground?' or 'OP'">
+              </div>
+              <button class="btn-primary-action" id="runMcpToolBtn">
+                <i class="fa-solid fa-bolt"></i> Execute MCP Tool
+              </button>
+            </div>
+            <div class="code-container" style="margin-top: 1rem;">
+              <pre><code id="mcpOutputBlock">Click "Execute MCP Tool" to view real-time JSON-RPC output from MCP server...</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content 6: Component Inventory Cards -->
       <div class="tab-pane" id="tab-inventory">
         <div class="inventory-controls">
           <div class="search-box">
@@ -315,7 +612,7 @@
         </div>
       </div>
 
-      <!-- Tab Content 3: SPICE Netlist -->
+      <!-- Tab Content 7: SPICE Netlist -->
       <div class="tab-pane" id="tab-spice">
         <div class="editor-header">
           <div class="file-tag">
@@ -331,7 +628,7 @@
         </div>
       </div>
 
-      <!-- Tab Content 4: JSON Graph -->
+      <!-- Tab Content 8: JSON Graph -->
       <div class="tab-pane" id="tab-json">
         <div class="editor-header">
           <div class="file-tag">
@@ -347,7 +644,7 @@
         </div>
       </div>
 
-      <!-- Tab Content 5: Engine Logs -->
+      <!-- Tab Content 9: Engine Logs -->
       <div class="tab-pane" id="tab-logs">
         <div class="editor-header">
           <div class="file-tag">
@@ -368,6 +665,6 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast">Copied to clipboard!</div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2.2.2"></script>
 </body>
 </html>
