@@ -679,10 +679,85 @@ def get_job_original(job_id: str):
 
 @app.get("/api/jobs/{job_id}/annotated")
 def get_job_annotated(job_id: str):
-    p = UPLOAD_DIR / job_id / "annotated.jpg"
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="Annotated image not found")
-    return FileResponse(p)
+    clean_id = job_id.strip()
+    p = UPLOAD_DIR / clean_id / "annotated.jpg"
+    if p.exists():
+        return FileResponse(p)
+    
+    # Check if sample image exists or job input exists to generate annotated overlay on demand
+    try:
+        graph = _get_or_load_job_graph(clean_id)
+        orig_path = None
+        for ext in [".jpg", ".png", ".jpeg"]:
+            candidate = DATA_DIR / "inputs" / f"{clean_id}{ext}"
+            if candidate.exists():
+                orig_path = candidate
+                break
+        if not orig_path and (UPLOAD_DIR / clean_id / "input.jpg").exists():
+            orig_path = UPLOAD_DIR / clean_id / "input.jpg"
+            
+        if orig_path and orig_path.exists():
+            job_dir = UPLOAD_DIR / clean_id
+            job_dir.mkdir(parents=True, exist_ok=True)
+            annotated_path = job_dir / "annotated.jpg"
+            
+            orig_img = Image.open(orig_path).convert("RGB")
+            annotated_img = orig_img.copy()
+            draw = ImageDraw.Draw(annotated_img, "RGBA")
+            
+            color_map = {
+                "resistor": "#00f0ff",
+                "capacitor": "#a855f7",
+                "inductor": "#10b981",
+                "voltage": "#f59e0b",
+                "current": "#f59e0b",
+                "transistor": "#f43f5e",
+                "diode": "#ec4899",
+                "gnd": "#38bdf8",
+                "operational_amplifier": "#6366f1"
+            }
+            
+            for comp in graph.components:
+                if not comp.bbox or len(comp.bbox) != 4:
+                    continue
+                bbox = comp.bbox
+                c_type = (comp.type_refined or comp.type or "").lower()
+                color_hex = "#00f0ff"
+                for k, v in color_map.items():
+                    if k in c_type:
+                        color_hex = v
+                        break
+                        
+                rgb = tuple(int(color_hex.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+                fill_rgba = rgb + (45,)
+                draw.rectangle([bbox[0], bbox[1], bbox[2], bbox[3]], outline=rgb, width=4, fill=fill_rgba)
+                
+                label_text = comp.display_type or comp.type
+                if comp.value:
+                    label_text += f": {comp.value}"
+                elif comp.label:
+                    label_text += f": {comp.label}"
+                    
+                tw = max(len(label_text) * 8 + 10, 50)
+                th = 18
+                draw.rectangle([bbox[0], max(0, bbox[1] - th - 3), bbox[0] + tw, max(0, bbox[1])], fill=rgb)
+                draw.text((bbox[0] + 5, max(0, bbox[1] - th - 1)), label_text, fill=(255, 255, 255, 255))
+                
+                if comp.terminals:
+                    for term in comp.terminals:
+                        sc = term.sketch_coordinates
+                        if sc and hasattr(sc, "x") and hasattr(sc, "y"):
+                            px, py = sc.x, sc.y
+                            draw.ellipse([px-6, py-6, px+6, py+6], fill=(16, 185, 129, 255), outline=(255, 255, 255, 255), width=2)
+                        elif isinstance(sc, dict) and "x" in sc and "y" in sc and sc["x"] is not None:
+                            px, py = sc["x"], sc["y"]
+                            draw.ellipse([px-6, py-6, px+6, py+6], fill=(16, 185, 129, 255), outline=(255, 255, 255, 255), width=2)
+
+            annotated_img.save(annotated_path, "JPEG", quality=95)
+            return FileResponse(annotated_path)
+    except Exception:
+        pass
+    raise HTTPException(status_code=404, detail="Annotated image not found")
 
 
 @app.get("/api/jobs/{job_id}/schematic/dark")
@@ -739,6 +814,15 @@ def get_job_schematic_schemdraw(job_id: str):
         return FileResponse(f, media_type="image/svg+xml")
     for f in (REPO_ROOT / "outputs" / "mcp_renders" / clean_id).glob("*_schemdraw.svg"):
         return FileResponse(f, media_type="image/svg+xml")
+    try:
+        graph = _get_or_load_job_graph(clean_id)
+        out_dir = REPO_ROOT / "outputs" / "mcp_renders" / clean_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        render_circuit_graph(graph, out_dir)
+        for f in out_dir.glob("*_schemdraw.svg"):
+            return FileResponse(f, media_type="image/svg+xml")
+    except Exception:
+        pass
     raise HTTPException(status_code=404, detail="Schemdraw schematic not found")
 
 

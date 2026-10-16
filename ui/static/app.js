@@ -48,8 +48,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const sketchImageWrapper = document.getElementById("sketchImageWrapper");
   const cadImageWrapper = document.getElementById("cadImageWrapper");
+  const sketchCanvasViewport = document.getElementById("sketchCanvasViewport");
+  const cadCanvasViewport = document.getElementById("cadCanvasViewport");
   const mainDisplayImg = document.getElementById("mainDisplayImg");
   const sketchDisplayImg = document.getElementById("sketchDisplayImg");
+  const sketchBboxSvg = document.getElementById("sketchBboxSvg");
+  const compPopover = document.getElementById("compPopover");
+  const popoverCloseBtn = document.getElementById("popoverCloseBtn");
+  const popoverEditBtn = document.getElementById("popoverEditBtn");
   const selectionBox = document.getElementById("selectionBox");
   const dualViewportGrid = document.getElementById("dualViewportGrid");
   
@@ -234,35 +240,46 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // --------------------------------------------------------------------------
-  // Zoom & View Controls
+  // Zoom & View Controls & Interactive Marking
   // --------------------------------------------------------------------------
+  let cachedInspectorComponents = [];
+
   function updateViewModeButtons() {
     [btnShowDual, btnShowSchematic, btnShowSchemdraw, btnShowAnnotated].forEach(b => b && b.classList.remove("active"));
     const cards = document.querySelectorAll(".viewport-card");
+    const jobId = currentJobId || currentSample || "cir1";
+
     if (activeViewMode === "dual") {
       if (btnShowDual) btnShowDual.classList.add("active");
       if (dualViewportGrid) dualViewportGrid.style.gridTemplateColumns = "1fr 1fr";
       if (cards[0]) cards[0].style.display = "flex";
       if (cards[1]) cards[1].style.display = "flex";
       if (cadThemeGroup) cadThemeGroup.style.display = "flex";
+      if (sketchDisplayImg) sketchDisplayImg.src = `/api/samples/image/${jobId}.jpg`;
+      if (mainDisplayImg) mainDisplayImg.src = `/api/jobs/${jobId}/schematic/${activeCadTheme}?t=${Date.now()}`;
+      if (sketchBboxSvg) sketchBboxSvg.style.display = "block";
     } else if (activeViewMode === "schematic") {
       if (btnShowSchematic) btnShowSchematic.classList.add("active");
       if (dualViewportGrid) dualViewportGrid.style.gridTemplateColumns = "1fr";
       if (cards[0]) cards[0].style.display = "none";
       if (cards[1]) cards[1].style.display = "flex";
       if (cadThemeGroup) cadThemeGroup.style.display = "flex";
+      if (mainDisplayImg) mainDisplayImg.src = `/api/jobs/${jobId}/schematic/${activeCadTheme}?t=${Date.now()}`;
     } else if (activeViewMode === "schemdraw") {
       if (btnShowSchemdraw) btnShowSchemdraw.classList.add("active");
       if (dualViewportGrid) dualViewportGrid.style.gridTemplateColumns = "1fr";
       if (cards[0]) cards[0].style.display = "none";
       if (cards[1]) cards[1].style.display = "flex";
       if (cadThemeGroup) cadThemeGroup.style.display = "none";
+      if (mainDisplayImg) mainDisplayImg.src = `/api/jobs/${jobId}/schematic/schemdraw?t=${Date.now()}`;
     } else if (activeViewMode === "annotated") {
       if (btnShowAnnotated) btnShowAnnotated.classList.add("active");
       if (dualViewportGrid) dualViewportGrid.style.gridTemplateColumns = "1fr";
       if (cards[0]) cards[0].style.display = "flex";
       if (cards[1]) cards[1].style.display = "none";
       if (cadThemeGroup) cadThemeGroup.style.display = "none";
+      if (sketchDisplayImg) sketchDisplayImg.src = `/api/jobs/${jobId}/annotated?t=${Date.now()}`;
+      if (sketchBboxSvg) sketchBboxSvg.style.display = "block";
     }
   }
 
@@ -270,6 +287,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btnShowDual.addEventListener("click", () => {
       activeViewMode = "dual";
       updateViewModeButtons();
+      showToast("View: Side-by-Side Dual View");
     });
   }
 
@@ -277,9 +295,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btnShowSchematic.addEventListener("click", () => {
       activeViewMode = "schematic";
       updateViewModeButtons();
-      if (currentJobId && mainDisplayImg) {
-        mainDisplayImg.src = `/api/jobs/${currentJobId}/schematic/${activeCadTheme}?t=${Date.now()}`;
-      }
+      showToast("View: Full CAD Schematic");
     });
   }
 
@@ -287,9 +303,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btnShowSchemdraw.addEventListener("click", () => {
       activeViewMode = "schemdraw";
       updateViewModeButtons();
-      if (currentJobId && mainDisplayImg) {
-        mainDisplayImg.src = `/api/jobs/${currentJobId}/schematic/schemdraw?t=${Date.now()}`;
-      }
+      showToast("View: Schemdraw Schematic");
     });
   }
 
@@ -297,6 +311,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btnShowAnnotated.addEventListener("click", () => {
       activeViewMode = "annotated";
       updateViewModeButtons();
+      showToast("View: Sketch BBoxes & Detections");
     });
   }
 
@@ -305,8 +320,9 @@ document.addEventListener("DOMContentLoaded", () => {
       activeCadTheme = "dark";
       btnThemeDark.classList.add("active");
       if (btnThemeLight) btnThemeLight.classList.remove("active");
-      if (currentJobId && mainDisplayImg) {
-        mainDisplayImg.src = `/api/jobs/${currentJobId}/schematic/dark?t=${Date.now()}`;
+      const jobId = currentJobId || currentSample || "cir1";
+      if (mainDisplayImg) {
+        mainDisplayImg.src = `/api/jobs/${jobId}/schematic/dark?t=${Date.now()}`;
       }
     });
   }
@@ -316,19 +332,244 @@ document.addEventListener("DOMContentLoaded", () => {
       activeCadTheme = "light";
       btnThemeLight.classList.add("active");
       if (btnThemeDark) btnThemeDark.classList.remove("active");
-      if (currentJobId && mainDisplayImg) {
-        mainDisplayImg.src = `/api/jobs/${currentJobId}/schematic/light?t=${Date.now()}`;
+      const jobId = currentJobId || currentSample || "cir1";
+      if (mainDisplayImg) {
+        mainDisplayImg.src = `/api/jobs/${jobId}/schematic/light?t=${Date.now()}`;
       }
     });
   }
+
+  // --------------------------------------------------------------------------
+  // Interactive Component BBoxes, Identification, & Port Landmarks
+  // --------------------------------------------------------------------------
+  function renderInteractiveBBoxes(components) {
+    if (!sketchBboxSvg || !sketchDisplayImg) return;
+    cachedInspectorComponents = components || [];
+
+    const naturalW = sketchDisplayImg.naturalWidth || 1198;
+    const naturalH = sketchDisplayImg.naturalHeight || 683;
+
+    sketchBboxSvg.setAttribute("viewBox", `0 0 ${naturalW} ${naturalH}`);
+    sketchBboxSvg.setAttribute("preserveAspectRatio", "none");
+    sketchBboxSvg.innerHTML = "";
+
+    if (!components || !components.length) return;
+
+    components.forEach(comp => {
+      if (!comp.bbox || comp.bbox.length !== 4) return;
+      const [x1, y1, x2, y2] = comp.bbox;
+      const w = Math.max(12, x2 - x1);
+      const h = Math.max(12, y2 - y1);
+
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.setAttribute("class", "comp-bbox-group");
+      g.setAttribute("data-id", comp.id);
+
+      // Bounding box rectangle
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("class", "comp-bbox-rect");
+      rect.setAttribute("x", x1);
+      rect.setAttribute("y", y1);
+      rect.setAttribute("width", w);
+      rect.setAttribute("height", h);
+      g.appendChild(rect);
+
+      // Component identification label pill
+      const label = `${comp.display_type || comp.type}${comp.value ? ': ' + comp.value : ''}`;
+      const pillW = Math.max(50, label.length * 7.5 + 16);
+      const pillH = 18;
+      const pillY = Math.max(0, y1 - pillH - 2);
+
+      const pillRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      pillRect.setAttribute("class", "comp-bbox-pill");
+      pillRect.setAttribute("x", x1);
+      pillRect.setAttribute("y", pillY);
+      pillRect.setAttribute("width", pillW);
+      pillRect.setAttribute("height", pillH);
+      g.appendChild(pillRect);
+
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      text.setAttribute("class", "comp-bbox-text");
+      text.setAttribute("x", x1 + 6);
+      text.setAttribute("y", pillY + 13);
+      text.textContent = label;
+      g.appendChild(text);
+
+      // Terminal port landmarks
+      if (comp.terminals && Array.isArray(comp.terminals)) {
+        comp.terminals.forEach((term, idx) => {
+          if (term.sketch_coordinates && term.sketch_coordinates.x !== undefined) {
+            const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            const termClass = (term.name || `t${idx+1}`).toLowerCase();
+            dot.setAttribute("class", `comp-port-dot terminal-${termClass}`);
+            dot.setAttribute("cx", term.sketch_coordinates.x);
+            dot.setAttribute("cy", term.sketch_coordinates.y);
+            dot.setAttribute("r", "5");
+
+            const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+            title.textContent = `${term.name || 'Pin'} (Node ${term.connected_node_id !== null ? term.connected_node_id : 'Open'})`;
+            dot.appendChild(title);
+
+            g.appendChild(dot);
+          }
+        });
+      }
+
+      // Click on component box to open details and editor
+      g.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openComponentDetails(comp);
+      });
+
+      sketchBboxSvg.appendChild(g);
+    });
+  }
+
+  function openComponentDetails(comp) {
+    if (!comp) return;
+
+    // 1. Mark selected in SVG overlay
+    document.querySelectorAll(".comp-bbox-group").forEach(el => el.classList.remove("selected"));
+    const group = document.querySelector(`.comp-bbox-group[data-id="${comp.id}"]`);
+    if (group) group.classList.add("selected");
+
+    // 2. Populate and display floating popover
+    if (compPopover) {
+      const popoverBadge = document.getElementById("popoverBadge");
+      const popoverId = document.getElementById("popoverId");
+      const popoverValue = document.getElementById("popoverValue");
+      const popoverConf = document.getElementById("popoverConf");
+      const popoverTerminals = document.getElementById("popoverTerminals");
+
+      if (popoverBadge) popoverBadge.textContent = (comp.display_type || comp.type || "COMPONENT").toUpperCase();
+      if (popoverId) popoverId.textContent = `#${comp.id}`;
+      if (popoverValue) popoverValue.textContent = comp.value || comp.label || "Unspecified";
+      if (popoverConf) popoverConf.textContent = `${Math.round((comp.confidence || 0.95) * 100)}%`;
+
+      if (popoverTerminals) {
+        popoverTerminals.innerHTML = "";
+        (comp.terminals || []).forEach(t => {
+          const span = document.createElement("span");
+          span.className = "popover-term-badge";
+          span.textContent = `${t.name}: Net ${t.connected_node_id !== null ? t.connected_node_id : 'Open'}`;
+          popoverTerminals.appendChild(span);
+        });
+      }
+
+      // Position popover over the component
+      if (sketchDisplayImg && sketchDisplayImg.clientWidth > 0 && comp.bbox) {
+        const [x1, y1, x2, y2] = comp.bbox;
+        const scaleX = sketchDisplayImg.clientWidth / (sketchDisplayImg.naturalWidth || 1198);
+        const scaleY = sketchDisplayImg.clientHeight / (sketchDisplayImg.naturalHeight || 683);
+        const posX = Math.min(sketchDisplayImg.clientWidth - 275, Math.max(10, x1 * scaleX));
+        const posY = Math.min(sketchDisplayImg.clientHeight - 190, Math.max(10, (y2 * scaleY) + 8));
+        compPopover.style.left = `${posX}px`;
+        compPopover.style.top = `${posY}px`;
+      }
+      compPopover.style.display = "block";
+    }
+
+    // 3. Highlight corresponding table row in Inspector and scroll into view
+    document.querySelectorAll("#inspectorTableBody tr").forEach(r => r.style.background = "");
+    const editBtn = document.querySelector(`.btn-edit-sm[data-id="${comp.id}"]`);
+    if (editBtn && editBtn.closest("tr")) {
+      const tr = editBtn.closest("tr");
+      tr.style.background = "rgba(251, 191, 36, 0.2)";
+      tr.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    // 4. Populate inspector edit card
+    currentEditingCompId = comp.id;
+    if (editCompId) editCompId.textContent = `#${comp.id} (${comp.display_type || comp.type})`;
+    if (editValueInput) editValueInput.value = comp.value || "";
+    if (editTypeSelect) editTypeSelect.value = comp.type || "resistor";
+    const termSelect = document.getElementById("editTerminalSelect");
+    if (termSelect) {
+      termSelect.innerHTML = '<option value="">Select Pin...</option>';
+      (comp.terminals || []).forEach(t => {
+        const opt = document.createElement("option");
+        opt.value = t.terminal_id !== undefined ? t.terminal_id : t.id;
+        opt.textContent = `${t.name} (currently Node ${t.connected_node_id !== null ? t.connected_node_id : 'Open'})`;
+        termSelect.appendChild(opt);
+      });
+    }
+
+    showToast(`Identified & Opened Component #${comp.id}: ${comp.display_type || comp.type}`);
+  }
+
+  if (popoverCloseBtn) {
+    popoverCloseBtn.addEventListener("click", () => {
+      if (compPopover) compPopover.style.display = "none";
+      document.querySelectorAll(".comp-bbox-group").forEach(el => el.classList.remove("selected"));
+    });
+  }
+
+  if (popoverEditBtn) {
+    popoverEditBtn.addEventListener("click", () => {
+      switchTab("tab-inspector");
+      if (graphEditCard) graphEditCard.style.display = "block";
+      showToast(`Editing Component #${currentEditingCompId} in Inspector`);
+    });
+  }
+
+  if (sketchDisplayImg) {
+    sketchDisplayImg.addEventListener("load", () => {
+      if (cachedInspectorComponents && cachedInspectorComponents.length) {
+        renderInteractiveBBoxes(cachedInspectorComponents);
+      }
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // Drag to Pan Viewports & Zoom
+  // --------------------------------------------------------------------------
+  function makeViewportDraggable(viewport) {
+    if (!viewport) return;
+    let isDown = false;
+    let startX = 0, startY = 0, scrollLeft = 0, scrollTop = 0;
+
+    viewport.addEventListener("mousedown", (e) => {
+      if (e.target.closest(".comp-bbox-group, .comp-popover, button, select, input, a")) return;
+      isDown = true;
+      viewport.classList.add("is-dragging");
+      startX = e.pageX - viewport.offsetLeft;
+      startY = e.pageY - viewport.offsetTop;
+      scrollLeft = viewport.scrollLeft;
+      scrollTop = viewport.scrollTop;
+    });
+
+    viewport.addEventListener("mouseleave", () => {
+      isDown = false;
+      viewport.classList.remove("is-dragging");
+    });
+
+    viewport.addEventListener("mouseup", () => {
+      isDown = false;
+      viewport.classList.remove("is-dragging");
+    });
+
+    viewport.addEventListener("mousemove", (e) => {
+      if (!isDown) return;
+      e.preventDefault();
+      const x = e.pageX - viewport.offsetLeft;
+      const y = e.pageY - viewport.offsetTop;
+      const walkX = (x - startX) * 1.5;
+      const walkY = (y - startY) * 1.5;
+      viewport.scrollLeft = scrollLeft - walkX;
+      viewport.scrollTop = scrollTop - walkY;
+    });
+  }
+
+  makeViewportDraggable(sketchCanvasViewport);
+  makeViewportDraggable(cadCanvasViewport);
 
   async function loadPresetCircuit(sampleName) {
     currentJobId = sampleName;
     currentSample = sampleName;
 
     // 1. Set images
-    sketchDisplayImg.src = `/api/samples/image/${sampleName}.jpg`;
-    mainDisplayImg.src = `/api/jobs/${sampleName}/schematic/${activeCadTheme}?t=${Date.now()}`;
+    if (sketchDisplayImg) sketchDisplayImg.src = `/api/samples/image/${sampleName}.jpg`;
+    if (mainDisplayImg) mainDisplayImg.src = `/api/jobs/${sampleName}/schematic/${activeCadTheme}?t=${Date.now()}`;
 
     // 2. Fetch data in parallel
     await Promise.all([
@@ -338,7 +579,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ]);
 
     // 3. Show metrics
-    metricsStrip.style.display = "grid";
+    if (metricsStrip) metricsStrip.style.display = "grid";
   }
 
   async function loadNetlistAndJson(circuitId) {
@@ -346,16 +587,16 @@ document.addEventListener("DOMContentLoaded", () => {
       const sRes = await fetch(`/api/jobs/${circuitId}/download/spice`);
       if (sRes.ok) {
         const text = await sRes.text();
-        spiceCodeBlock.textContent = text;
-        spiceFilename.textContent = `${circuitId}.cir`;
-        statNets.textContent = (text.match(/^[RCLVDIMQX]/gm) || []).length;
+        if (spiceCodeBlock) spiceCodeBlock.textContent = text;
+        if (spiceFilename) spiceFilename.textContent = `${circuitId}.cir`;
+        if (statNets) statNets.textContent = (text.match(/^[RCLVDIMQX]/gm) || []).length;
       }
       const jRes = await fetch(`/api/jobs/${circuitId}/download/json`);
       if (jRes.ok) {
         const jdata = await jRes.json();
-        jsonCodeBlock.textContent = JSON.stringify(jdata, null, 2);
-        statComponents.textContent = (jdata.components || []).length;
-        statLabels.textContent = (jdata.texts || []).length;
+        if (jsonCodeBlock) jsonCodeBlock.textContent = JSON.stringify(jdata, null, 2);
+        if (statComponents) statComponents.textContent = (jdata.components || []).length;
+        if (statLabels) statLabels.textContent = (jdata.texts || []).length;
         renderComponentInventory(jdata.components || []);
       }
     } catch (e) {
@@ -364,25 +605,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function highlightComponentOnSketch(comp) {
-    if (!comp || !comp.bbox || comp.bbox.length !== 4) {
-      if (selectionBox) selectionBox.style.display = "none";
-      return;
-    }
-    const naturalW = sketchDisplayImg.naturalWidth || 1000;
-    const naturalH = sketchDisplayImg.naturalHeight || 800;
-    const dispW = sketchDisplayImg.clientWidth;
-    const dispH = sketchDisplayImg.clientHeight;
-    if (dispW === 0 || dispH === 0) return;
-
-    const scaleX = dispW / naturalW;
-    const scaleY = dispH / naturalH;
-    const [x1, y1, x2, y2] = comp.bbox;
-
-    selectionBox.style.left = `${x1 * scaleX}px`;
-    selectionBox.style.top = `${y1 * scaleY}px`;
-    selectionBox.style.width = `${Math.max(20, (x2 - x1) * scaleX)}px`;
-    selectionBox.style.height = `${Math.max(20, (y2 - y1) * scaleY)}px`;
-    selectionBox.style.display = "block";
+    openComponentDetails(comp);
   }
 
   zoomInBtn.addEventListener("click", () => {
@@ -401,11 +624,23 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   function applyZoom() {
-    if (imageWrapper) imageWrapper.style.transform = `scale(${zoomLevel})`;
     const sketchWrap = document.getElementById("sketchImageWrapper");
     const cadWrap = document.getElementById("cadImageWrapper");
-    if (sketchWrap) sketchWrap.style.transform = `scale(${zoomLevel})`;
-    if (cadWrap) cadWrap.style.transform = `scale(${zoomLevel})`;
+    [sketchWrap, cadWrap].forEach(wrap => {
+      if (!wrap) return;
+      wrap.style.transform = `scale(${zoomLevel})`;
+      if (zoomLevel > 1) {
+        wrap.style.transformOrigin = "top left";
+        const pad = `${(zoomLevel - 1) * 60}%`;
+        wrap.style.marginRight = pad;
+        wrap.style.marginBottom = pad;
+        wrap.style.marginLeft = "0";
+        wrap.style.marginTop = "0";
+      } else {
+        wrap.style.transformOrigin = "center center";
+        wrap.style.margin = "auto";
+      }
+    });
   }
 
   // --------------------------------------------------------------------------
@@ -543,10 +778,8 @@ document.addEventListener("DOMContentLoaded", () => {
     statTime.textContent = data.stats.processing_time;
     metricsStrip.style.display = "grid";
 
-    // 3. Visual Viewer (Default to Computerized CAD Schematic!)
-    if (viewportPlaceholder) viewportPlaceholder.style.display = "none";
-    if (imageWrapper) imageWrapper.style.display = "inline-block";
-    activeViewMode = "schematic";
+    // 3. Visual Viewer (Default to Side-by-Side Dual View)
+    activeViewMode = "dual";
     updateViewModeButtons();
     cadThemeGroup.style.display = "flex";
 
@@ -562,15 +795,15 @@ document.addEventListener("DOMContentLoaded", () => {
     applyZoom();
 
     // 4. Component Inventory
-    inventoryBadge.textContent = data.components.length;
+    if (inventoryBadge) inventoryBadge.textContent = data.components.length;
     renderComponentInventory(data.components);
 
     // 5. SPICE Netlist
-    spiceFilename.textContent = `${data.image_name}.cir`;
-    spiceCodeBlock.textContent = data.spice_netlist;
+    if (spiceFilename) spiceFilename.textContent = `${data.image_name}.cir`;
+    if (spiceCodeBlock) spiceCodeBlock.textContent = data.spice_netlist;
 
     // 6. JSON Graph
-    jsonCodeBlock.textContent = JSON.stringify(data, null, 2);
+    if (jsonCodeBlock) jsonCodeBlock.textContent = JSON.stringify(data, null, 2);
 
     // 7. Load all newly added Paper2CAD components
     if (data.job_id) {
@@ -583,6 +816,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Render Component Inventory
   // --------------------------------------------------------------------------
   function renderComponentInventory(components) {
+    if (!inventoryGrid || !classFilterChips) return;
     inventoryGrid.innerHTML = "";
     
     // Extract unique classes for filter chips
@@ -596,7 +830,7 @@ document.addEventListener("DOMContentLoaded", () => {
       chip.addEventListener("click", () => {
         document.querySelectorAll(".filter-chip").forEach(c => c.classList.remove("active"));
         chip.classList.add("active");
-        filterComponentCards(cls, componentFilter.value.trim().toLowerCase());
+        if (componentFilter) filterComponentCards(cls, componentFilter.value.trim().toLowerCase());
       });
       classFilterChips.appendChild(chip);
     });
@@ -637,14 +871,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  componentFilter.addEventListener("input", (e) => {
-    const q = e.target.value.trim().toLowerCase();
-    const activeChip = document.querySelector(".filter-chip.active");
-    const activeCls = activeChip ? activeChip.getAttribute("data-class") : "all";
-    filterComponentCards(activeCls, q);
-  });
+  if (componentFilter) {
+    componentFilter.addEventListener("input", (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      const activeChip = document.querySelector(".filter-chip.active");
+      const activeCls = activeChip ? activeChip.getAttribute("data-class") : "all";
+      filterComponentCards(activeCls, q);
+    });
+  }
 
   function filterComponentCards(cls, query) {
+    if (!inventoryGrid) return;
     const cards = inventoryGrid.querySelectorAll(".comp-card");
     cards.forEach(card => {
       const cardCls = card.getAttribute("data-class");
@@ -657,17 +894,21 @@ document.addEventListener("DOMContentLoaded", () => {
   // --------------------------------------------------------------------------
   // Copy & Export Handlers
   // --------------------------------------------------------------------------
-  copySpiceBtn.addEventListener("click", () => {
-    if (!currentResults) return;
-    navigator.clipboard.writeText(currentResults.spice_netlist);
-    showToast("SPICE netlist copied to clipboard!");
-  });
+  if (copySpiceBtn) {
+    copySpiceBtn.addEventListener("click", () => {
+      if (!currentResults) return;
+      navigator.clipboard.writeText(currentResults.spice_netlist);
+      showToast("SPICE netlist copied to clipboard!");
+    });
+  }
 
-  copyJsonBtn.addEventListener("click", () => {
-    if (!currentResults) return;
-    navigator.clipboard.writeText(JSON.stringify(currentResults, null, 2));
-    showToast("JSON graph copied to clipboard!");
-  });
+  if (copyJsonBtn) {
+    copyJsonBtn.addEventListener("click", () => {
+      if (!currentResults) return;
+      navigator.clipboard.writeText(JSON.stringify(currentResults, null, 2));
+      showToast("JSON graph copied to clipboard!");
+    });
+  }
 
   const downloadSchematicBtn = document.getElementById("downloadSchematicBtn");
   if (downloadSchematicBtn) {
@@ -677,15 +918,19 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  downloadSpiceBtn.addEventListener("click", () => {
-    if (!currentJobId) return;
-    window.location.href = `/api/jobs/${currentJobId}/download/spice`;
-  });
+  if (downloadSpiceBtn) {
+    downloadSpiceBtn.addEventListener("click", () => {
+      if (!currentJobId) return;
+      window.location.href = `/api/jobs/${currentJobId}/download/spice`;
+    });
+  }
 
-  downloadJsonBtn.addEventListener("click", () => {
-    if (!currentJobId) return;
-    window.location.href = `/api/jobs/${currentJobId}/download/json`;
-  });
+  if (downloadJsonBtn) {
+    downloadJsonBtn.addEventListener("click", () => {
+      if (!currentJobId) return;
+      window.location.href = `/api/jobs/${currentJobId}/download/json`;
+    });
+  }
 
   function showToast(msg) {
     toast.textContent = msg;
@@ -735,6 +980,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       renderInspectorNodes(data.nodes || []);
       renderInspectorComponents(data.components || []);
+      renderInteractiveBBoxes(data.components || []);
     } catch (e) {
       console.error("Inspector load failed:", e);
     }
@@ -819,8 +1065,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (e.target.closest(".btn-edit-sm")) return;
         document.querySelectorAll("#inspectorTableBody tr").forEach(r => r.style.background = "");
         tr.style.background = "rgba(0, 240, 255, 0.12)";
-        highlightComponentOnSketch(comp);
-        showToast(`Highlighted ${comp.display_type} #${comp.id} in sketch and CAD schematic`);
+        openComponentDetails(comp);
       });
 
       const editBtn = tr.querySelector(".btn-edit-sm");
@@ -959,6 +1204,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function loadValidationData(jobId) {
+    if (!validationFindingsList && !validationBadge) return;
     try {
       const res = await fetch(`/api/jobs/${jobId}/validate`);
       if (!res.ok) return;
@@ -975,10 +1221,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const warnings = findings.filter(f => f.severity === "warning");
     const infos = findings.filter(f => f.severity === "info");
 
-    valErrorCount.textContent = errors.length;
-    valWarningCount.textContent = warnings.length;
-    valInfoCount.textContent = infos.length;
-    validationBadge.textContent = findings.length;
+    if (valErrorCount) valErrorCount.textContent = errors.length;
+    if (valWarningCount) valWarningCount.textContent = warnings.length;
+    if (valInfoCount) valInfoCount.textContent = infos.length;
+    if (validationBadge) validationBadge.textContent = findings.length;
 
     validationFindingsList.innerHTML = "";
     if (findings.length === 0) {
@@ -1214,7 +1460,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // Initialize Default State & Initial Circuit
   // --------------------------------------------------------------------------
   updateViewModeButtons();
-  loadMcpTools();
+  if (mcpToolsGrid) {
+    loadMcpTools();
+  }
 
   try {
     loadPresetCircuit(currentSample || "cir1");

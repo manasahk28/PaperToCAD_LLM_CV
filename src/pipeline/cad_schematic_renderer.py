@@ -192,7 +192,7 @@ class CADSchematicRenderer:
         rows, gnd_comp, topo_type = self._extract_branches(components, padding)
 
         svg = []
-        svg.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {view_w} {view_h}" width="100%" height="100%">')
+        svg.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {view_w} {view_h}" width="{view_w}" height="{view_h}">')
         svg.append('<defs>')
         
         # Grid pattern

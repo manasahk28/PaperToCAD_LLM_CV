@@ -200,7 +200,7 @@
           <div class="metric-icon green"><i class="fa-solid fa-code"></i></div>
           <div class="metric-info">
             <span class="metric-value" id="statNets">0</span>
-            <span class="metric-label">Netlist Elements</span>
+            <span class="metric-label">Circuit Nets</span>
           </div>
         </div>
 
@@ -216,7 +216,8 @@
           <button class="btn-action primary-action" id="downloadSchematicBtn" title="Download Computerized Schematic (SVG)">
             <i class="fa-solid fa-file-arrow-down"></i> Schematic (.svg)
           </button>
-          <button class="btn-action" id="downloadSpiceBtn" title="Download SPICE Netlist (.cir)">
+          <!-- Netlist download hidden from UI for now -->
+          <button class="btn-action" id="downloadSpiceBtn" title="Download SPICE Netlist (.cir)" style="display: none;">
             <i class="fa-solid fa-download"></i> Netlist (.cir)
           </button>
           <button class="btn-action" id="downloadJsonBtn" title="Download Circuit Graph (.json)">
@@ -233,23 +234,8 @@
         <button class="tab-btn" data-tab="tab-inspector">
           <i class="fa-solid fa-diagram-project"></i> Connectivity Inspector
         </button>
-        <button class="tab-btn" data-tab="tab-validation">
-          <i class="fa-solid fa-shield-halved"></i> Validation <span class="tab-badge" id="validationBadge">0</span>
-        </button>
         <button class="tab-btn" data-tab="tab-ai">
           <i class="fa-solid fa-brain"></i> AI Assistant
-        </button>
-        <button class="tab-btn" data-tab="tab-sim">
-          <i class="fa-solid fa-chart-line"></i> SPICE Simulation
-        </button>
-        <button class="tab-btn" data-tab="tab-mcp">
-          <i class="fa-solid fa-network-wired"></i> MCP Protocol <span class="tab-badge" id="mcpBadge">6</span>
-        </button>
-        <button class="tab-btn" data-tab="tab-inventory">
-          <i class="fa-solid fa-boxes-stacked"></i> Inventory <span class="tab-badge" id="inventoryBadge">0</span>
-        </button>
-        <button class="tab-btn" data-tab="tab-spice">
-          <i class="fa-solid fa-terminal"></i> Netlist
         </button>
         <button class="tab-btn" data-tab="tab-json">
           <i class="fa-solid fa-network-wired"></i> JSON Graph
@@ -305,7 +291,37 @@
               <div class="canvas-viewport" id="sketchCanvasViewport">
                 <div class="image-wrapper" id="sketchImageWrapper">
                   <img id="sketchDisplayImg" src="/api/samples/image/cir1.jpg" alt="Hand-Drawn Sketch">
+                  <svg id="sketchBboxSvg" class="sketch-bbox-overlay" viewBox="0 0 1024 608"></svg>
                   <div class="selection-box" id="selectionBox" style="display: none;"></div>
+                  <!-- Floating Component Detail & Identification Popover -->
+                  <div class="comp-popover" id="compPopover" style="display: none;">
+                    <div class="comp-popover-header">
+                      <div class="comp-popover-title">
+                        <span class="comp-popover-badge" id="popoverBadge">RESISTOR</span>
+                        <span class="comp-popover-id" id="popoverId">#0</span>
+                      </div>
+                      <button class="comp-popover-close" id="popoverCloseBtn" title="Close">&times;</button>
+                    </div>
+                    <div class="comp-popover-body">
+                      <div class="comp-popover-row">
+                        <span class="popover-label">Value / Label:</span>
+                        <span class="popover-val" id="popoverValue">10 kΩ</span>
+                      </div>
+                      <div class="comp-popover-row">
+                        <span class="popover-label">Confidence:</span>
+                        <span class="popover-val" id="popoverConf">98%</span>
+                      </div>
+                      <div class="comp-popover-row">
+                        <span class="popover-label">Terminals / Pins:</span>
+                        <div class="popover-terminals" id="popoverTerminals"></div>
+                      </div>
+                    </div>
+                    <div class="comp-popover-footer">
+                      <button class="popover-btn-action" id="popoverEditBtn">
+                        <i class="fa-solid fa-pen-to-square"></i> Open in Inspector & Editor
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -432,7 +448,7 @@
         </div>
       </div>
 
-      <!-- Tab Content 3: Rule-Based Validation Findings -->
+      <!-- [HIDDEN FROM UI FOR NOW]: Tab Content 3: Rule-Based Validation Findings
       <div class="tab-pane" id="tab-validation">
         <div class="validation-container">
           <div class="validation-toolbar-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
@@ -460,6 +476,7 @@
           </div>
         </div>
       </div>
+      -->
 
       <!-- Tab Content 4: Grounded AI Circuit Assistant -->
       <div class="tab-pane" id="tab-ai">
@@ -475,8 +492,8 @@
             <button class="prompt-chip" data-q="Explain why any warnings were flagged and how to resolve them.">
               Explain Warnings
             </button>
-            <button class="prompt-chip" data-q="Is this circuit ready for SPICE simulation?">
-              SPICE Readiness
+            <button class="prompt-chip" data-q="List all active components and their connectivity.">
+              Components & Pins
             </button>
           </div>
 
@@ -485,7 +502,7 @@
               <div class="msg-avatar"><i class="fa-solid fa-robot"></i></div>
               <div class="msg-body">
                 <strong>Paper2CAD Assistant</strong>
-                <p>Hello! I inspect your hand-drawn circuit using verified graph topology and validation findings. Ask me anything about components, connected nodes, or electrical behavior.</p>
+                <p>Hello! I inspect your hand-drawn circuit using verified graph topology and components. Ask me anything about components, connected nodes, or electrical behavior.</p>
               </div>
             </div>
           </div>
@@ -499,7 +516,7 @@
         </div>
       </div>
 
-      <!-- Tab Content 5: SPICE Simulation -->
+      <!-- [HIDDEN FROM UI FOR NOW]: Tab Content 5: SPICE Simulation
       <div class="tab-pane" id="tab-sim">
         <div class="sim-container">
           <div class="sim-toolbar">
@@ -540,8 +557,9 @@
           </div>
         </div>
       </div>
+      -->
 
-      <!-- Tab Content: Model Context Protocol (MCP) Hub -->
+      <!-- [HIDDEN FROM UI FOR NOW]: Tab Content: Model Context Protocol (MCP) Hub
       <div class="tab-pane" id="tab-mcp">
         <div class="mcp-container">
           <div class="mcp-header-bar">
@@ -553,7 +571,6 @@
           </div>
 
           <div class="mcp-tools-grid" id="mcpToolsGrid">
-            <!-- 6 MCP Tools cards dynamically populated -->
           </div>
 
           <div class="mcp-console-section">
@@ -591,8 +608,9 @@
           </div>
         </div>
       </div>
+      -->
 
-      <!-- Tab Content 6: Component Inventory Cards -->
+      <!-- [HIDDEN FROM UI FOR NOW]: Tab Content 6: Component Inventory Cards
       <div class="tab-pane" id="tab-inventory">
         <div class="inventory-controls">
           <div class="search-box">
@@ -611,8 +629,9 @@
           </div>
         </div>
       </div>
+      -->
 
-      <!-- Tab Content 7: SPICE Netlist -->
+      <!-- [HIDDEN FROM UI FOR NOW]: Tab Content 7: SPICE Netlist
       <div class="tab-pane" id="tab-spice">
         <div class="editor-header">
           <div class="file-tag">
@@ -627,6 +646,7 @@
           <pre><code id="spiceCodeBlock" class="language-spice">* Click "Convert to SPICE Netlist" to generate circuit code...</code></pre>
         </div>
       </div>
+      -->
 
       <!-- Tab Content 8: JSON Graph -->
       <div class="tab-pane" id="tab-json">
