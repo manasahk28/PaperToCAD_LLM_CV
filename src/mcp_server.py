@@ -41,7 +41,13 @@ from cad_schematic_renderer import render_circuit_graph
 from spice_simulator import SPICESimulator
 from ai_assistant import AICircuitAssistant
 
-from mcp.server.fastmcp import FastMCP
+try:
+    from mcp.server.fastmcp import FastMCP
+except (ImportError, ModuleNotFoundError):
+    try:
+        from mcp.server.mcpserver import MCPServer as FastMCP
+    except Exception:
+        FastMCP = None
 from PIL import Image
 
 mcp_server = FastMCP("Paper2CAD-Schematic-Inspector")

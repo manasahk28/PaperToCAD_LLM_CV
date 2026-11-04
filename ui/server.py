@@ -164,7 +164,7 @@ def _looks_like_diode_symbol(image: Image.Image, bbox: List[float]) -> bool:
 
     diagonal_slopes = set()
     has_cathode_bar = False
-    for (x_start, y_start, x_end, y_end) in lines[:, 0]:
+    for (x_start, y_start, x_end, y_end) in np.asarray(lines).reshape(-1, 4):
         dx, dy = int(x_end - x_start), int(y_end - y_start)
         length = math.hypot(dx, dy)
         angle = abs(math.degrees(math.atan2(dy, dx)))

@@ -7,28 +7,29 @@ PaperToCAD is an end-to-end Computer Vision and Deep Learning system that transf
 ## ⚡ Key Features
 
 - **Component & Text Detection**: YOLOv10 object detection with cross-class Non-Maximum Suppression (NMS) to eliminate duplicate/phantom detections.
-- **Optical Character Recognition (OCR)**: Integrated PARSeq model for reading resistor, capacitor, inductor values, and voltage/current specifications.
+- **Optical Character Recognition (OCR)**: Integrated PARSeq model for reading resistor, capacitor, inductor values, and voltage/current ratings.
 - **Smart Designation & Value Binding**: Automatically pairs designator labels (`R1`, `V1`, `LED1`) with electrical ratings (`220Ω`, `5V`, `10k`, `100mH`).
 - **Topology-Aware Circuit Reconstruction**:
   - Uses detected component terminals and wire-net membership to connect components.
   - CAD renders only inferred nets; it does not add assumed series connections or ground rails.
 - **Standardized Vector CAD Schematics**: Exports IEEE electronic schematics in Dark CAD, Light Blueprint, and Schemdraw textbook formats.
-- **SPICE Netlist Synthesis**: Upload results preserve inferred node names and mark unreadable values as `VALUE_REQUIRED` rather than guessing values.
-- **Interactive Web Studio**: Uploads run the full component, OCR, wire, and connectivity pipeline. Detected values can be edited and the schematic/SPICE output regenerated; the grounded assistant can calculate passive values when the required electrical inputs are supplied.
-- **Grounded Circuit Assistant**: Without an LLM, it answers supported questions from detected components, connections, validation findings, and supplied calculation values. For open-ended conversational answers, configure `GROQ_API_KEY`, `OPENAI_API_KEY`, or `LLM_API_KEY` in `.env`; a local OpenAI-compatible server can instead use `LLM_BASE_URL` and `LLM_MODEL` (for example, an Ollama server at `http://localhost:11434/v1`).
-- **Honest SPICE Export**: Missing component values are marked as required instead of silently substituting guessed values; such netlists are not simulation-ready until values are supplied.
-
-Uploaded images without curated ground truth use the full topology pipeline, so CPU processing takes longer than component-only detection.
+- **SPICE Netlist Synthesis**: Output netlists preserve inferred node names and mark unreadable values as `VALUE_REQUIRED` rather than hallucinating values.
+- **Interactive Web Studio**: Uploads run the full component, OCR, wire, and connectivity pipeline. Users can inspect component crops, edit values in-place, and re-synthesize schematics and netlists on the fly.
+- **Circuit Rule Validator**: Real-time sanity checker alerting on floating terminals, direct short-circuits, and missing ground references.
+- **Grounded Circuit Assistant**: 
+  - **Deterministic / Offline**: Answers queries directly from detected components, topology connections, validation findings, and calculates passive ratings (Ohm's law, RC time constants, LED ballast resistance).
+  - **Optional LLM Integration**: Connects to Groq (`GROQ_API_KEY`), OpenAI (`OPENAI_API_KEY`), or local OpenAI-compatible endpoints (`LLM_BASE_URL` with Ollama / vLLM / LM Studio) for conversational circuit explanations.
+- **Official Model Context Protocol (MCP) Server**: Exposes complete circuit processing, inspection, validation, simulation, and query tools to AI agents and IDEs like VS Code.
 
 ---
 
 ## 💻 System Prerequisites
 
 - **Operating System**: Windows 10/11, Ubuntu 20.04+, or macOS
-- **Python**: Version `3.10`, `3.11`, or `3.12` (Tested on Python 3.12 64-bit)
+- **Python**: Version `3.10`, `3.11`, or `3.12` (Python 3.10+ required for MCP server)
 - **Compute Backend**:
-  - **CPU**: Supported out-of-the-box (no GPU required)
-  - **GPU (CUDA)**: Optional, NVIDIA GPU with CUDA 11.8+ or 12.1+ for accelerated inference
+  - **CPU**: Fully supported out-of-the-box (no GPU required)
+  - **GPU (CUDA)**: Optional NVIDIA GPU with CUDA 11.8+ or 12.1+ for accelerated inference
 
 ---
 
@@ -42,12 +43,12 @@ Uploaded images without curated ground truth use the full topology pipeline, so 
    ```
 
 2. **Create a virtual environment**:
-   - On Windows (PowerShell):
+   - **On Windows (PowerShell)**:
      ```powershell
      python -m venv venv
      .\venv\Scripts\Activate.ps1
      ```
-   - On Linux / macOS:
+   - **On Linux / macOS**:
      ```bash
      python3 -m venv venv
      source venv/bin/activate
@@ -61,25 +62,59 @@ Uploaded images without curated ground truth use the full topology pipeline, so 
 
 ### Option 2: Install using Conda
 
-1. **Create and activate the Conda environment**:
-   ```bash
-   conda env create -f environment.yml
-   conda activate papertocad
-   ```
+```bash
+conda env create -f environment.yml
+conda activate papertocad
+```
 
-### 3. Verify Model Weights
+### 3. Download Model Weights
 
 Ensure model weights exist in the `weights/` directory:
 - `weights/yolo/best.pt` (YOLOv10 circuit object detector)
 - `weights/parseq/best_parseq.pt` (PARSeq optical character recognizer)
 
-*(If weights are missing, download them using `python scripts/download_weights.py`.)*
+You can download weights using the multi-threaded downloader:
+```bash
+python scripts/fast_download.py
+```
+*(Or alternatively, `python scripts/download_weights.py`.)*
 
 ---
 
-## 🚀 Quick Start (Single Entry Point)
+## ⚙️ Environment Configuration (.env)
 
-To run the entire Paper2CAD application, use the single entry point:
+The AI Circuit Assistant runs completely offline using its built-in topological calculation engine. To enable optional LLM-augmented natural language explanations:
+
+1. Copy the example configuration:
+   ```bash
+   cp .env.example .env
+   ```
+   *(Or on Windows PowerShell: `Copy-Item .env.example .env`)*
+
+2. Open `.env` and set your preferred provider:
+   - **Groq Cloud (Fast & Free tier)**:
+     ```ini
+     GROQ_API_KEY=gsk_...
+     # GROQ_MODEL=qwen/qwen3.8-27b
+     ```
+   - **OpenAI**:
+     ```ini
+     OPENAI_API_KEY=sk-...
+     # OPENAI_MODEL=gpt-4o-mini
+     ```
+   - **Local / Self-Hosted (Ollama / vLLM)**:
+     ```ini
+     LLM_BASE_URL=http://localhost:11434/v1
+     LLM_MODEL=llama3.2
+     ```
+
+---
+
+## 🚀 Execution Modes
+
+### Method 1: Interactive Web Studio (GUI - Recommended)
+
+Launch the complete Web Studio application with a single command:
 
 ```bash
 python main.py
@@ -87,44 +122,54 @@ python main.py
 
 *Or on Windows, simply double-click **`start.bat`**.*
 
-This automatically launches the server on `http://localhost:8000` and opens your browser.
+This automatically boots the FastAPI backend on `http://localhost:8000` and opens your default browser.
 
-### Advanced Flags
+#### Studio Capabilities:
+- **Interactive View Modes**:
+  - **CAD Schematic**: IEEE-standardized orthogonal CAD vector drawing with Dark CAD and Light Blueprint themes.
+  - **Schemdraw**: Textbook-grade electronic schematic diagram.
+  - **Detection Boxes**: Color-coded YOLOv10 component bounding boxes with confidence scores.
+  - **Hand Drawing**: High-resolution view of original sketch.
+- **Component Inventory**: Inspect cropped component images, verify ratings, and edit values/designators with instant schematic regeneration.
+- **Rule Validator**: Real-time diagnostics for floating pins, short circuits, and ground rails.
+- **SPICE & JSON Export**: One-click download or copy of `.spice` / `.cir` netlists and structured JSON graphs.
+- **AI Circuit Assistant**: Live chat sidebar to ask questions, verify connections, or compute passive component values.
+
+#### Advanced CLI Flags:
 ```bash
 python main.py --port 8080      # Run on custom port
 python main.py --no-browser     # Run in headless/server mode
-python main.py --mcp            # Launch official Model Context Protocol (MCP) server
+python main.py --mcp            # Start Model Context Protocol (MCP) server
 ```
-
-### Connect an MCP client
-
-The workspace includes a VS Code MCP configuration at `.vscode/mcp.json`. Open this
-repository in VS Code and start the `papertocad` server from the MCP servers view.
-The server uses stdio and exposes tools to process a local sketch end to end,
-inspect and validate circuits, render schematics, export SPICE netlists, simulate
-circuits, and explain circuit topology.
-
-Use the `process_sketch` tool with an absolute image path, for example
-`D:\Projects\circuits\my_sketch.png`. It runs the full CV pipeline and saves
-each run's inputs, intermediate files, logs, reconstructed graph, schematic, and
-SPICE netlist under `outputs/mcp_jobs/<job-id>/`. The required YOLO, PARSeq, and
-HAWP model weights must be installed first; see `scripts/download_weights.py`.
-The pipeline uses CUDA when available and otherwise runs on CPU.
-
-The MCP Python SDK requires Python 3.10 or newer. Install the project requirements
-with that interpreter before starting the server. The Conda reproduction
-environment remains pinned to Python 3.9 and does not support the MCP server.
-   - **Explore View Modes**:
-     - **Computerized CAD Schematic**: Clean, IEEE-standardized orthogonal CAD vector drawing with Dark / Light Blueprint themes.
-     - **Schemdraw**: Normalized textbook-grade electronic circuit diagram.
-     - **Detection Boxes**: Color-coded YOLOv10 component bounding boxes and confidence scores.
-     - **Hand Drawing**: Your original unprocessed drawing.
-   - **Inspect Components**: Browse the **Component Inventory** tab to inspect crops of each detected resistor, capacitor, battery, or diode.
-   - **Export SPICE & JSON**: Switch to the **SPICE Netlist** or **Structured JSON** tab to copy or download simulation decks (`.cir` / `.spice`).
 
 ---
 
-### Method 2: Command-Line Pipeline (CLI)
+### Method 2: Model Context Protocol (MCP) Server
+
+PaperToCAD includes a built-in MCP server that allows AI assistants (Claude Desktop, VS Code Copilot, Cursor) to directly invoke circuit tools.
+
+#### Starting via CLI:
+```bash
+python main.py --mcp
+```
+
+#### Connecting in VS Code:
+The repository includes a ready-to-use configuration in [`.vscode/mcp.json`](.vscode/mcp.json). Open this repository in VS Code and start the `papertocad` server from the MCP Servers tab.
+
+#### Exposed Tools:
+| Tool | Description |
+| :--- | :--- |
+| `process_sketch` | Runs the full 9-stage CV pipeline on a local image path end-to-end. |
+| `inspect_circuit` | Returns topological nodes, components, and terminal connections. |
+| `validate_circuit` | Evaluates circuit safety rules (shorts, floating terminals, ground reference). |
+| `generate_schematic` | Renders IEEE CAD vector SVG and Schemdraw diagrams. |
+| `export_spice_netlist`| Generates standard SPICE simulation decks. |
+| `simulate_circuit` | Runs PySpice / Ngspice transient or operating-point simulations. |
+| `explain_circuit` | Queries the AI Circuit Assistant for grounded technical explanations. |
+
+---
+
+### Method 3: Command-Line Pipeline (CLI Batch Mode)
 
 To process circuits in batch mode using the full 9-stage CV pipeline:
 
@@ -140,25 +185,46 @@ Outputs are automatically generated under `outputs/run1/`:
 
 ---
 
-### Method 3: Automated Test Suite
+### Method 4: Automated Test Suite
 
-Run unit and topology verification tests to validate circuit synthesis:
+PaperToCAD comes with a comprehensive test suite covering the entire pipeline:
 
 ```bash
-# 1. Test topology classification (single-loop vs parallel ladder)
-python tests/test_classify.py
+# Run all 64 unit and integration tests across the project
+python -m unittest discover -s tests
 
-# 2. Test cross-class deduplication and smart label binding
-python tests/test_fix_hallucination.py
+# Or run the Master Suite directly
+python tests/test_paper2cad_master_suite.py
+```
 
-# 3. Test SPICE netlist synthesis
+#### Individual Test Suites:
+```bash
+# Circuit safety and topology rule validation
+python tests/test_circuit_validator.py
+
+# Grounded AI Assistant and component value calculations
+python tests/test_ai_assistant.py
+
+# Graph-based CAD schematic rendering
+python tests/test_cad_graph_rendering.py
+
+# Port alignment and wire tracing
+python tests/test_build_connections.py
+
+# Circuit data models and serialization
+python tests/test_circuit_data_model.py
+
+# MCP server endpoints and tools
+python tests/test_mcp_server.py
+
+# Web Studio server routes and endpoints
+python tests/test_ui_server.py
+
+# SPICE netlist synthesis
 python tests/test_spice_synthesis.py
 
-# 4. Test Schemdraw rendering on single-loop LED circuit
-python tests/test_render_led.py
-
-# 5. Test Schemdraw rendering on multi-branch RLC ladder
-python tests/test_render_cir1_v2.py
+# Circuit topology classification (single-loop vs ladder)
+python tests/test_classify.py
 ```
 
 ---
@@ -167,50 +233,66 @@ python tests/test_render_cir1_v2.py
 
 ```text
 PaperToCAD_LLM_CV/
-├── assets/                  # Character sets, metadata, and typography
-│   └── meta/                # parseq_charset.txt and category metadata
-├── configs/                 # YAML configuration files (paths, pipelines)
-├── data/                    # Circuit datasets
-│   ├── inputs/              # Sample hand-drawn circuit sketches (cir1–cir5)
-│   └── ground_truth/        # Annotated circuit ground-truth JSON files
-├── outputs/                 # Output artifacts (auto-generated, gitignored)
-│   ├── run1/                # Pipeline stage execution artifacts
-│   ├── ui_jobs/             # Web Studio uploaded jobs and crops
-│   └── test_previews/       # Verification and preview schematic renders
-├── scripts/                 # Pipeline execution scripts
-│   ├── run_pipeline.py      # End-to-end 9-stage pipeline runner
-│   ├── download_weights.py  # Model weights downloader
-│   └── run_all.sh           # Shell batch execution script
-├── src/                     # Core Python modules
-│   └── pipeline/            # 9-stage CV pipeline components
-│       ├── cad_schematic_renderer.py   # Vector CAD & Schemdraw engine
-│       ├── build_spice_netlists.py     # SPICE deck synthesizer
+├── .vscode/
+│   └── mcp.json                 # VS Code Model Context Protocol server configuration
+├── assets/                      # Character sets, metadata, and typography
+│   └── meta/                    # parseq_charset.txt and category metadata
+├── configs/                     # YAML configuration files (paths, pipelines)
+├── data/                        # Circuit datasets
+│   ├── inputs/                  # Sample hand-drawn circuit sketches (cir1–cir5)
+│   └── ground_truth/            # Annotated circuit ground-truth JSON files
+├── outputs/                     # Output artifacts (auto-generated, gitignored)
+│   ├── run1/                    # Pipeline stage execution artifacts
+│   ├── ui_jobs/                 # Web Studio uploaded jobs and crops
+│   ├── mcp_jobs/                # MCP execution artifacts
+│   └── test_previews/           # Preview schematic renders
+├── scripts/                     # Pipeline execution and helper scripts
+│   ├── run_pipeline.py          # End-to-end 9-stage batch runner
+│   ├── download_weights.py      # Standard model weights downloader
+│   ├── fast_download.py         # Multi-threaded Hugging Face weights downloader
+│   └── run_all.sh               # Shell batch execution script
+├── src/                         # Core Python modules
+│   ├── mcp_server.py            # Model Context Protocol (MCP) server implementation
+│   └── pipeline/                # 9-stage CV & synthesis pipeline
+│       ├── ai_assistant.py             # Grounded AI Circuit Assistant & calculation engine
+│       ├── circuit_data_model.py       # Pydantic circuit graph, node, and component models
+│       ├── circuit_validator.py        # Electrical rule checker (floating pins, shorts)
+│       ├── cad_schematic_renderer.py   # Vector CAD (SVG) & Schemdraw engine
 │       ├── build_connections.py        # Wire trace & terminal connectivity
+│       ├── build_spice_netlists.py     # SPICE deck synthesizer
 │       ├── build_final_json.py         # Graph JSON builder
+│       ├── connectivity_inspector.py   # Topological graph query inspector
+│       ├── spice_simulator.py          # SPICE simulation bridge
+│       ├── fuse_yolo_parseq.py         # OCR & component binding
 │       ├── merge_points.py             # Junction & crossover fusion
 │       ├── remove_components.py        # Line inpainting / segmentation
-│       ├── refine_component_types.py   # Subtype classifier (DINOv2)
-│       └── fuse_yolo_parseq.py         # OCR & component binding
-├── tests/                   # Dedicated test suite
-│   ├── __init__.py
-│   ├── test_classify.py            # Topology classification tests
-│   ├── test_fix_hallucination.py   # Deduplication & label binding tests
-│   ├── test_spice_synthesis.py     # SPICE netlist synthesis tests
-│   ├── test_render_cir1_v2.py      # Multi-branch Schemdraw test
-│   └── test_render_led.py          # Single-loop Schemdraw test
-├── third_party/             # External framework submodules
-│   ├── HAWP/                # Holistic Attraction Wireline Parser
-│   ├── parseq-main/         # Permuted Autoregressive Sequence OCR
-│   └── mmpose/              # Keypoint terminal detector
-├── ui/                      # Web Studio Application
-│   ├── server.py            # FastAPI backend server
-│   └── static/              # Modern dark-mode web application (HTML/CSS/JS)
-├── weights/                 # Model checkpoints (YOLO, PARSeq, ViTPose)
-├── run_ui.py                # Web Studio launcher entry point
-├── README.md                # Project documentation & guide
-├── requirements.txt         # Pip package requirements
-├── environment.yml          # Conda environment configuration
-└── .gitignore               # Git exclude rules
+│       └── refine_component_types.py   # Subtype classifier (DINOv2)
+├── tests/                       # Dedicated test suite
+│   ├── test_paper2cad_master_suite.py  # Master test suite
+│   ├── test_ai_assistant.py            # AI assistant and calculation tests
+│   ├── test_build_connections.py       # Wire connectivity and port tests
+│   ├── test_cad_graph_rendering.py     # Graph-based schematic rendering tests
+│   ├── test_circuit_data_model.py      # Circuit data model verification
+│   ├── test_circuit_validator.py       # Rule validator tests
+│   ├── test_mcp_server.py              # MCP server unit tests
+│   ├── test_ui_server.py               # Web Studio server API tests
+│   ├── test_spice_synthesis.py         # SPICE netlist synthesis tests
+│   └── test_classify.py               # Topology classification tests
+├── third_party/                 # External framework submodules
+│   ├── HAWP/                    # Holistic Attraction Wireline Parser
+│   ├── parseq-main/             # Permuted Autoregressive Sequence OCR
+│   └── mmpose/                  # Keypoint terminal detector
+├── ui/                          # Web Studio Application
+│   ├── server.py                # FastAPI backend server
+│   └── static/                  # Modern responsive web application (HTML/CSS/JS)
+├── weights/                     # Model checkpoints (YOLO, PARSeq, ViTPose)
+├── main.py                      # Unified single entry point (Web Studio / MCP)
+├── run_ui.py                    # Legacy launcher forwarder to main.py
+├── start.bat                    # One-click Windows desktop launcher
+├── README.md                    # Project documentation & guide
+├── requirements.txt             # Pip package requirements
+├── environment.yml              # Conda environment configuration
+└── .env.example                 # Example environment variables template
 ```
 
 ---
@@ -231,6 +313,7 @@ graph TD
     I --> J["Stage 9a: IEEE CAD Vector SVG"]
     I --> K["Stage 9b: Schemdraw Schematic"]
     I --> L["Stage 9c: SPICE Netlist (.cir)"]
+    H --> M["Stage 10: Rule Validator & Grounded AI Assistant"]
 ```
 
 ---
@@ -238,16 +321,22 @@ graph TD
 ## ❓ Troubleshooting & FAQs
 
 ### 1. Port 8000 is already in use
-If another application is using port `8000`, specify a custom port in `run_ui.py`:
+If another application is using port `8000`, specify a custom port:
 ```bash
-python -c "import uvicorn; uvicorn.run('ui.server:app', host='127.0.0.1', port=8080)"
+python main.py --port 8080
 ```
 Then visit `http://localhost:8080`.
 
 ### 2. First-time model inference delay
 On the first request after server startup, PyTorch loads YOLOv10 and PARSeq model weights into memory. This initial initialization takes 5–10 seconds on CPU. Subsequent inference requests execute rapidly in 1–3 seconds.
 
-### 3. Windows Terminal Character Encoding
+### 3. Missing weights error
+If you receive a missing weights warning, run the fast multi-threaded downloader:
+```bash
+python scripts/fast_download.py
+```
+
+### 4. Windows Terminal Character Encoding
 If running on Windows PowerShell / CMD and printing Greek characters (e.g. `Ω`), scripts automatically configure UTF-8 output (`sys.stdout.reconfigure(encoding='utf-8')`).
 
 ---
