@@ -62,7 +62,7 @@ def run_cmd(cmd: list[str], desc: str, env=None):
 def main():
     parser = argparse.ArgumentParser(description="Run Hand-Drawn Circuit Diagram Recognition Pipeline")
     parser.add_argument("--config", default=None, help="Path to config YAML (default: configs/paths.yaml)")
-    parser.add_argument("--stage", choices=["all", "yolo", "parseq", "suppress", "hawp", "merge", "wires", "connect", "final", "spice"],
+    parser.add_argument("--stage", choices=["all", "yolo", "parseq", "suppress", "hawp", "merge", "wires", "connect", "final"],
                         default="all", help="Pipeline stage to run")
     parser.add_argument("--device", default=None, help="Device to use ('cpu' or 'cuda')")
     parser.add_argument("--conf", type=float, default=0.45, help="YOLO detection confidence threshold")
@@ -98,14 +98,13 @@ def main():
     yolo_exp = cfg_get(cfg, "paths.yolo_detect_exp")
     suppressed_img = cfg_get(cfg, "paths.suppressed_img")
     hawp_json = cfg_get(cfg, "paths.hawp_json")
-    spice_dir = cfg_get(cfg, "paths.spice_netlists")
 
     yolo_project = str(Path(yolo_exp).parent)
     yolo_name = str(Path(yolo_exp).name)
     hawp_out = str(Path(hawp_json).parent)
 
     # Ensure output directories exist
-    for d in [yolo_project, hawp_out, spice_dir]:
+    for d in [yolo_project, hawp_out]:
         if d:
             Path(d).mkdir(parents=True, exist_ok=True)
 
@@ -177,20 +176,13 @@ def main():
         if args.skip_port_estimation:
             print("[WARN] Skipping optional ViTPose port landmark estimation.")
         else:
-            run_cmd([py, str(PIPELINE_DIR / "infer_port_vitpose.py")], "[7.3/9] ViTPose Port Landmark Estimation", env=env)
+            run_cmd([py, str(PIPELINE_DIR / "infer_port_vitpose.py")], "[7.3/8] ViTPose Port Landmark Estimation", env=env)
 
     # 8. Final JSON & Visuals
     if stage in ("all", "final"):
-        run_cmd([py, str(PIPELINE_DIR / "build_final_json.py")], "[8/9] Build Final JSON & Visualizations", env=env)
+        run_cmd([py, str(PIPELINE_DIR / "build_final_json.py")], "[8/8] Build Final JSON & Visualizations", env=env)
 
-    # 9. SPICE Netlists
-    if stage in ("all", "spice"):
-        spice_cmd = [
-            py, str(PIPELINE_DIR / "build_spice_netlists.py"),
-            "--cfg", cfg_file,
-            "--output-dir", str(spice_dir)
-        ]
-        run_cmd(spice_cmd, "[9/9] Export SPICE Netlists", env=env)
+
 
     print("\n[DONE] Pipeline execution completed successfully!")
 

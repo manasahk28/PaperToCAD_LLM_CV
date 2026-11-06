@@ -46,7 +46,6 @@ paths:
 
   # Final outputs
   final_result_root: outputs/run1/final_result
-  spice_netlists: outputs/run1/spice_netlists
 
   # Shared static assets
   font_dir: assets/fonts

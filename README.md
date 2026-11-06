@@ -1,6 +1,11 @@
-# PaperToCAD: Hand-Drawn Electronic Circuit to CAD Schematic & SPICE Netlist AI Engine
+# PaperToCAD: Hand-Drawn Electronic Circuit to CAD Schematic AI Engine
 
-PaperToCAD is an end-to-end Computer Vision and Deep Learning system that transforms hand-drawn analog and digital circuit sketches into standardized, production-ready IEEE electronic CAD schematics (SVG/PNG) and SPICE simulation netlists (`.cir` / `.spice`).
+PaperToCAD is an end-to-end Computer Vision and Deep Learning system that transforms hand-drawn analog and digital circuit sketches.
+
+This project generates only two outputs:
+
+1. Identified Components Diagram
+2. CAD Schematic Diagram
 
 ---
 
@@ -13,13 +18,12 @@ PaperToCAD is an end-to-end Computer Vision and Deep Learning system that transf
   - Uses detected component terminals and wire-net membership to connect components.
   - CAD renders only inferred nets; it does not add assumed series connections or ground rails.
 - **Standardized Vector CAD Schematics**: Exports IEEE electronic schematics in Dark CAD, Light Blueprint, and Schemdraw textbook formats.
-- **SPICE Netlist Synthesis**: Output netlists preserve inferred node names and mark unreadable values as `VALUE_REQUIRED` rather than hallucinating values.
-- **Interactive Web Studio**: Uploads run the full component, OCR, wire, and connectivity pipeline. Users can inspect component crops, edit values in-place, and re-synthesize schematics and netlists on the fly.
+- **Interactive Web Studio**: Uploads run the full component, OCR, wire, and connectivity pipeline. Users can inspect component crops, edit values in-place, and re-synthesize schematics on the fly.
 - **Circuit Rule Validator**: Real-time sanity checker alerting on floating terminals, direct short-circuits, and missing ground references.
 - **Grounded Circuit Assistant**: 
   - **Deterministic / Offline**: Answers queries directly from detected components, topology connections, validation findings, and calculates passive ratings (Ohm's law, RC time constants, LED ballast resistance).
   - **Optional LLM Integration**: Connects to Groq (`GROQ_API_KEY`), OpenAI (`OPENAI_API_KEY`), or local OpenAI-compatible endpoints (`LLM_BASE_URL` with Ollama / vLLM / LM Studio) for conversational circuit explanations.
-- **Official Model Context Protocol (MCP) Server**: Exposes complete circuit processing, inspection, validation, simulation, and query tools to AI agents and IDEs like VS Code.
+- **Official Model Context Protocol (MCP) Server**: Exposes complete circuit processing, inspection, validation, and query tools to AI agents and IDEs like VS Code.
 
 ---
 
@@ -132,7 +136,7 @@ This automatically boots the FastAPI backend on `http://localhost:8000` and open
   - **Hand Drawing**: High-resolution view of original sketch.
 - **Component Inventory**: Inspect cropped component images, verify ratings, and edit values/designators with instant schematic regeneration.
 - **Rule Validator**: Real-time diagnostics for floating pins, short circuits, and ground rails.
-- **SPICE & JSON Export**: One-click download or copy of `.spice` / `.cir` netlists and structured JSON graphs.
+- **JSON Export**: One-click download or copy of structured JSON graphs.
 - **AI Circuit Assistant**: Live chat sidebar to ask questions, verify connections, or compute passive component values.
 
 #### Advanced CLI Flags:
@@ -163,8 +167,6 @@ The repository includes a ready-to-use configuration in [`.vscode/mcp.json`](.vs
 | `inspect_circuit` | Returns topological nodes, components, and terminal connections. |
 | `validate_circuit` | Evaluates circuit safety rules (shorts, floating terminals, ground reference). |
 | `generate_schematic` | Renders IEEE CAD vector SVG and Schemdraw diagrams. |
-| `export_spice_netlist`| Generates standard SPICE simulation decks. |
-| `simulate_circuit` | Runs PySpice / Ngspice transient or operating-point simulations. |
 | `explain_circuit` | Queries the AI Circuit Assistant for grounded technical explanations. |
 
 ---
@@ -181,7 +183,6 @@ Outputs are automatically generated under `outputs/run1/`:
 - `outputs/run1/yolo_detect/`: Raw component detections
 - `outputs/run1/ocr_parseq/`: Component value bindings
 - `outputs/run1/final_result/json/`: Topological circuit connectivity graphs
-- `outputs/run1/spice_netlists/`: Synthesized `.spice` simulation netlists
 
 ---
 
@@ -220,9 +221,6 @@ python tests/test_mcp_server.py
 # Web Studio server routes and endpoints
 python tests/test_ui_server.py
 
-# SPICE netlist synthesis
-python tests/test_spice_synthesis.py
-
 # Circuit topology classification (single-loop vs ladder)
 python tests/test_classify.py
 ```
@@ -259,10 +257,8 @@ PaperToCAD_LLM_CV/
 │       ├── circuit_validator.py        # Electrical rule checker (floating pins, shorts)
 │       ├── cad_schematic_renderer.py   # Vector CAD (SVG) & Schemdraw engine
 │       ├── build_connections.py        # Wire trace & terminal connectivity
-│       ├── build_spice_netlists.py     # SPICE deck synthesizer
 │       ├── build_final_json.py         # Graph JSON builder
 │       ├── connectivity_inspector.py   # Topological graph query inspector
-│       ├── spice_simulator.py          # SPICE simulation bridge
 │       ├── fuse_yolo_parseq.py         # OCR & component binding
 │       ├── merge_points.py             # Junction & crossover fusion
 │       ├── remove_components.py        # Line inpainting / segmentation
@@ -276,7 +272,6 @@ PaperToCAD_LLM_CV/
 │   ├── test_circuit_validator.py       # Rule validator tests
 │   ├── test_mcp_server.py              # MCP server unit tests
 │   ├── test_ui_server.py               # Web Studio server API tests
-│   ├── test_spice_synthesis.py         # SPICE netlist synthesis tests
 │   └── test_classify.py               # Topology classification tests
 ├── third_party/                 # External framework submodules
 │   ├── HAWP/                    # Holistic Attraction Wireline Parser
@@ -312,7 +307,6 @@ graph TD
     H --> I["Stage 8: Topology Classification (Loop vs Ladder)"]
     I --> J["Stage 9a: IEEE CAD Vector SVG"]
     I --> K["Stage 9b: Schemdraw Schematic"]
-    I --> L["Stage 9c: SPICE Netlist (.cir)"]
     H --> M["Stage 10: Rule Validator & Grounded AI Assistant"]
 ```
 

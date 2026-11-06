@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Tests for Paper2CAD MCP Server Tools (Phase 7).
-Directly tests invocations of all 6 exposed tools:
+Directly tests invocations of exposed tools:
 - inspect_circuit
 - validate_circuit
 - generate_schematic
-- export_spice_netlist
-- simulate_circuit
 - explain_circuit
 """
 
@@ -27,8 +25,6 @@ from src.mcp_server import (
     process_sketch,
     validate_circuit,
     generate_schematic,
-    export_spice_netlist,
-    simulate_circuit,
     explain_circuit
 )
 
@@ -67,7 +63,6 @@ class TestMCPServer(unittest.TestCase):
 
         self.assertEqual(config["paths"]["src_img"], str(input_dir))
         self.assertEqual(config["paths"]["final_result_root"], str(job_dir / "final"))
-        self.assertEqual(config["paths"]["spice_netlists"], str(job_dir / "spice"))
 
     def test_missing_optional_weights_identifies_skipped_stages(self):
         missing = _missing_optional_pipeline_weights({
@@ -98,22 +93,6 @@ class TestMCPServer(unittest.TestCase):
         self.assertEqual(res["status"], "success")
         self.assertIn("files", res)
         self.assertIn("cad_dark_svg", res["files"])
-
-    def test_export_spice_netlist_tool(self):
-        res_str = export_spice_netlist("cir1")
-        res = json.loads(res_str)
-        self.assertNotIn("error", res)
-        self.assertIn("netlist", res)
-        self.assertIn(".END", res["netlist"].upper())
-
-    def test_simulate_circuit_tool(self):
-        res_str = simulate_circuit("cir1", analysis="OP")
-        res = json.loads(res_str)
-        self.assertNotIn("error", res)
-        self.assertIn("available", res)
-        self.assertIn("success", res)
-        # Verify honest status report (whether ngspice is present or absent)
-        self.assertIsInstance(res["available"], bool)
 
     def test_explain_circuit_tool(self):
         res_str = explain_circuit("cir1", question="What is connected to component 0?")

@@ -76,15 +76,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const componentFilter = document.getElementById("componentFilter");
   const classFilterChips = document.getElementById("classFilterChips");
 
-  const spiceCodeBlock = document.getElementById("spiceCodeBlock");
-  const spiceFilename = document.getElementById("spiceFilename");
   const jsonCodeBlock = document.getElementById("jsonCodeBlock");
   const terminalBody = document.getElementById("terminalBody");
 
-  const copySpiceBtn = document.getElementById("copySpiceBtn");
   const copyJsonBtn = document.getElementById("copyJsonBtn");
   const clearLogsBtn = document.getElementById("clearLogsBtn");
-  const downloadSpiceBtn = document.getElementById("downloadSpiceBtn");
   const downloadJsonBtn = document.getElementById("downloadJsonBtn");
   const toast = document.getElementById("toast");
 
@@ -611,23 +607,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadNetlistAndJson(circuitId) {
     try {
-      const sRes = await fetch(`/api/jobs/${circuitId}/download/spice`);
-      if (sRes.ok) {
-        const text = await sRes.text();
-        if (spiceCodeBlock) spiceCodeBlock.textContent = text;
-        if (spiceFilename) spiceFilename.textContent = `${circuitId}.cir`;
-        if (statNets) statNets.textContent = (text.match(/^[RCLVDIMQX]/gm) || []).length;
-      }
       const jRes = await fetch(`/api/jobs/${circuitId}/download/json`);
       if (jRes.ok) {
         const jdata = await jRes.json();
         if (jsonCodeBlock) jsonCodeBlock.textContent = JSON.stringify(jdata, null, 2);
         if (statComponents) statComponents.textContent = (jdata.components || []).length;
         if (statLabels) statLabels.textContent = (jdata.texts || []).length;
+        if (statNets) statNets.textContent = (jdata.nodes || []).length;
         renderComponentInventory(jdata.components || []);
       }
     } catch (e) {
-      console.error("Netlist load failed:", e);
+      console.error("Circuit graph load failed:", e);
     }
   }
 
@@ -704,7 +694,7 @@ document.addEventListener("DOMContentLoaded", () => {
         let step = "step-yolo";
         if (curPct > 35) step = "step-crops";
         if (curPct > 55) step = "step-parseq";
-        if (curPct > 70) step = "step-spice";
+        if (curPct > 70) step = "step-cad";
         updateProgress(curPct + 10, step);
       }
     }, 450);
@@ -737,13 +727,13 @@ document.addEventListener("DOMContentLoaded", () => {
         );
       }
 
-      updateProgress(100, "step-spice");
+      updateProgress(100, "step-cad");
       setTimeout(() => {
         progressCard.style.display = "none";
       }, 1200);
 
       renderResults(data);
-      showToast("Circuit converted to SPICE successfully!");
+      showToast("Circuit converted to CAD successfully!");
     } catch (err) {
       clearInterval(timerInterval);
       progressCard.style.display = "none";
@@ -752,7 +742,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } finally {
       analyzeBtn.disabled = false;
       btnSpinner.style.display = "none";
-      btnText.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Convert to SPICE Netlist';
+      btnText.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Convert Circuit to CAD';
     }
   });
 }
@@ -764,7 +754,7 @@ document.addEventListener("DOMContentLoaded", () => {
     progressPct.textContent = `${pct}%`;
     progressBarFill.style.width = `${pct}%`;
 
-    const steps = ["step-init", "step-yolo", "step-crops", "step-parseq", "step-spice"];
+    const steps = ["step-init", "step-yolo", "step-crops", "step-parseq", "step-cad"];
     const activeIdx = steps.indexOf(activeStepId);
 
     steps.forEach((sId, idx) => {
@@ -812,7 +802,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // 2. Metrics strip
     statComponents.textContent = data.stats.total_components;
     statLabels.textContent = data.stats.total_labels;
-    statNets.textContent = data.stats.total_nets ?? (data.spice_netlist.match(/^[RCLVDIMQX]/gm) || []).length;
+    statNets.textContent = data.stats.total_nets ?? (data.topology ? data.topology.node_count : 0);
     statTime.textContent = data.stats.processing_time;
     metricsStrip.style.display = "grid";
 
@@ -836,9 +826,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (inventoryBadge) inventoryBadge.textContent = data.components.length;
     renderComponentInventory(data.components);
 
-    // 5. SPICE Netlist
-    if (spiceFilename) spiceFilename.textContent = `${data.image_name}.cir`;
-    if (spiceCodeBlock) spiceCodeBlock.textContent = data.spice_netlist;
+
 
     // 6. JSON Graph
     if (jsonCodeBlock) jsonCodeBlock.textContent = JSON.stringify(data, null, 2);
@@ -932,13 +920,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // --------------------------------------------------------------------------
   // Copy & Export Handlers
   // --------------------------------------------------------------------------
-  if (copySpiceBtn) {
-    copySpiceBtn.addEventListener("click", () => {
-      if (!currentResults) return;
-      navigator.clipboard.writeText(currentResults.spice_netlist);
-      showToast("SPICE netlist copied to clipboard!");
-    });
-  }
 
   if (copyJsonBtn) {
     copyJsonBtn.addEventListener("click", () => {
@@ -956,12 +937,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  if (downloadSpiceBtn) {
-    downloadSpiceBtn.addEventListener("click", () => {
-      if (!currentJobId) return;
-      window.location.href = `/api/jobs/${currentJobId}/download/spice`;
-    });
-  }
 
   if (downloadJsonBtn) {
     downloadJsonBtn.addEventListener("click", () => {
@@ -1242,17 +1217,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 ? {...comp, value: updated.value || "", designator: updated.label || comp.designator || ""}
                 : comp;
             });
-            currentResults.spice_netlist = updateData.spice_netlist;
             renderComponentInventory(currentResults.components);
           }
-          if (spiceCodeBlock) spiceCodeBlock.textContent = updateData.spice_netlist || "";
           if (jsonCodeBlock) jsonCodeBlock.textContent = JSON.stringify(updateData.graph, null, 2);
         }
 
         mainDisplayImg.src = `/api/jobs/${currentJobId}/schematic/${activeCadTheme}?t=${Date.now()}`;
         if (sketchDisplayImg) sketchDisplayImg.src = `/api/jobs/${currentJobId}/annotated?t=${Date.now()}`;
         graphEditCard.style.display = "none";
-        showToast(`Component #${currentEditingCompId} updated; schematic and SPICE refreshed.`);
+        showToast(`Component #${currentEditingCompId} updated; schematic refreshed.`);
       } catch (err) {
         showToast(`Edit failed: ${err.message}`);
       } finally {
@@ -1639,9 +1612,35 @@ document.addEventListener("DOMContentLoaded", () => {
     appendChatMessage("user", q);
     aiQuestionInput.value = "";
 
-    // Show temporary typing bubble
+    // Show temporary typing bubble with animated dots and dynamic status
     const typingId = "typing-" + Date.now();
-    appendChatMessage("assistant", '<i class="fa-solid fa-spinner fa-spin"></i> Paper2CAD Assistant is analyzing the circuit...', typingId);
+    const typingBadge = `<span class="ai-provider-pill ai-thinking-pill"><i class="fa-solid fa-brain fa-fade"></i> Thinking...</span>`;
+    const typingHtml = `
+      <div class="ai-typing-indicator">
+        <div class="ai-typing-dots">
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+        </div>
+        <span class="ai-typing-text" id="${typingId}-status">Analyzing circuit schematics...</span>
+      </div>
+    `;
+    appendChatMessage("assistant", typingHtml, typingId, typingBadge, true);
+
+    const thinkingSteps = [
+      "Analyzing circuit schematics...",
+      "Inspecting node connections and component values...",
+      "Consulting circuit topology and schematic data...",
+      "Synthesizing response..."
+    ];
+    let stepIndex = 0;
+    const thinkingInterval = setInterval(() => {
+      stepIndex = (stepIndex + 1) % thinkingSteps.length;
+      const statusSpan = document.getElementById(`${typingId}-status`);
+      if (statusSpan) {
+        statusSpan.textContent = thinkingSteps[stepIndex];
+      }
+    }, 2200);
 
     try {
       const res = await fetch(`/api/jobs/${targetJobId}/assistant/chat`, {
@@ -1653,6 +1652,7 @@ document.addEventListener("DOMContentLoaded", () => {
         })
       });
       const data = await res.json();
+      clearInterval(thinkingInterval);
       const typingEl = document.getElementById(typingId);
       if (typingEl) typingEl.remove();
 
@@ -1681,6 +1681,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Re-check status in case user just updated .env
       checkAssistantStatus();
     } catch (err) {
+      clearInterval(thinkingInterval);
       const typingEl = document.getElementById(typingId);
       if (typingEl) typingEl.remove();
       appendChatMessage("assistant", `⚠️ Error communicating with assistant: ${err.message}`);
@@ -1780,19 +1781,20 @@ document.addEventListener("DOMContentLoaded", () => {
     return html;
   }
 
-  function appendChatMessage(sender, rawText, elementId = null, extraBadge = "") {
+  function appendChatMessage(sender, rawText, elementId = null, extraBadge = "", isHtml = false) {
     if (!aiChatThread) return;
     const msg = document.createElement("div");
     msg.className = `ai-message ${sender}`;
     if (elementId) msg.id = elementId;
     const isBot = sender === "assistant";
-    const bodyContent = isBot ? formatAIMarkdown(rawText) : rawText.replace(/\n/g, '<br>');
+    const isHtmlContent = isHtml || (elementId && elementId.startsWith("typing-"));
+    const bodyContent = isHtmlContent ? rawText : (isBot ? formatAIMarkdown(rawText) : rawText.replace(/\n/g, '<br>'));
     msg.innerHTML = `
       <div class="msg-avatar"><i class="fa-solid ${isBot ? 'fa-robot' : 'fa-user'}"></i></div>
       <div class="msg-body">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
           <strong>${isBot ? 'Paper2CAD Assistant' : 'You'}</strong>
-          ${extraBadge}
+          ${extraBadge || ''}
         </div>
         <div>${bodyContent}</div>
       </div>
@@ -1801,68 +1803,7 @@ document.addEventListener("DOMContentLoaded", () => {
     aiChatThread.scrollTop = aiChatThread.scrollHeight;
   }
 
-  // SPICE Simulation Handlers
-  if (runSimBtn) {
-    runSimBtn.addEventListener("click", async () => {
-      if (!currentJobId) {
-        showToast("Please analyze a circuit diagram first.");
-        return;
-      }
 
-      const analysis = simAnalysisSelect.value;
-      runSimBtn.disabled = true;
-      runSimBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Running SPICE...';
-      simStatusText.textContent = "Simulating with ngspice...";
-
-      try {
-        const formData = new FormData();
-        formData.append("analysis", analysis);
-
-        const res = await fetch(`/api/jobs/${currentJobId}/simulate`, {
-          method: "POST",
-          body: formData
-        });
-        const data = await res.json();
-        const r = data.result || {};
-
-        simStatusText.textContent = r.success ? "Simulation Succeeded" : (r.available ? "Simulation Warnings" : "Simulator Unavailable");
-
-        // Voltages table
-        if (r.node_voltages && Object.keys(r.node_voltages).length > 0) {
-          let vHtml = '<table class="inspector-table"><thead><tr><th>Node</th><th>Voltage (V)</th></tr></thead><tbody>';
-          for (const [node, v] of Object.entries(r.node_voltages)) {
-            vHtml += `<tr><td><strong>${node}</strong></td><td><code>${Number(v).toFixed(4)} V</code></td></tr>`;
-          }
-          vHtml += '</tbody></table>';
-          simVoltagesWrap.innerHTML = vHtml;
-        } else {
-          simVoltagesWrap.innerHTML = '<p class="text-muted">No DC node voltages reported.</p>';
-        }
-
-        // Currents table
-        if (r.branch_currents && Object.keys(r.branch_currents).length > 0) {
-          let cHtml = '<table class="inspector-table"><thead><tr><th>Device / Branch</th><th>Current (A)</th></tr></thead><tbody>';
-          for (const [dev, cur] of Object.entries(r.branch_currents)) {
-            cHtml += `<tr><td><strong>${dev}</strong></td><td><code>${Number(cur).toExponential(3)} A</code></td></tr>`;
-          }
-          cHtml += '</tbody></table>';
-          simCurrentsWrap.innerHTML = cHtml;
-        } else {
-          simCurrentsWrap.innerHTML = '<p class="text-muted">No branch currents reported.</p>';
-        }
-
-        simConsoleOutput.textContent = r.message + "\n\n" + (r.raw_stdout || "") + (r.raw_stderr || "");
-        showToast(r.message || "Simulation execution finished");
-      } catch (err) {
-        simStatusText.textContent = "Execution Error";
-        simConsoleOutput.textContent = `Error: ${err.message}`;
-        showToast(`Simulation failed: ${err.message}`);
-      } finally {
-        runSimBtn.disabled = false;
-        runSimBtn.innerHTML = '<i class="fa-solid fa-play"></i> Run ngspice Simulation';
-      }
-    });
-  }
 
   // --------------------------------------------------------------------------
   // Model Context Protocol (MCP) Hub

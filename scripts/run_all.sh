@@ -108,7 +108,6 @@ YOLO_EXP_DIR="$(cfg_get paths.yolo_detect_exp)"        # .../yolo_detect/exp
 SUPPRESSED_IMG_DIR="$(cfg_get paths.suppressed_img)"   # .../suppressed_img
 HAWP_JSON_DIR="$(cfg_get paths.hawp_json)"             # .../HAWPimg/json
 FONT_DIR="$(cfg_get paths.font_dir)"                   # .../assets/fonts
-SPICE_NETLIST_DIR="$(cfg_get paths.spice_netlists)"    # .../spice_netlists
 
 # 派生目录
 YOLO_PROJECT_DIR="$(dirname "$YOLO_EXP_DIR")"          # .../yolo_detect
@@ -149,7 +148,6 @@ need_nonempty "paths.yolo_detect_exp" "$YOLO_EXP_DIR"
 need_nonempty "paths.suppressed_img" "$SUPPRESSED_IMG_DIR"
 need_nonempty "paths.hawp_json" "$HAWP_JSON_DIR"
 need_nonempty "paths.font_dir" "$FONT_DIR"
-need_nonempty "paths.spice_netlists" "$SPICE_NETLIST_DIR"
 
 need_dir  "paths.src_img" "$SRC_IMG_DIR"
 need_file "weights.yolo_best" "$YOLO_MODEL"
@@ -159,7 +157,7 @@ need_file "weights.hawp_ckpt" "$HAWP_CKPT"
 ###############################################
 # 目录准备
 ###############################################
-mkdir -p "$RUN_DIR" "$YOLO_PROJECT_DIR" "$HAWP_OUT_DIR" "$FONT_DIR" "$SPICE_NETLIST_DIR"
+mkdir -p "$RUN_DIR" "$YOLO_PROJECT_DIR" "$HAWP_OUT_DIR" "$FONT_DIR"
 
 # 字体准备（避免 build_final_json 卡住）
 if [ ! -f "$FONT_DIR/DejaVuSans.ttf" ] && [ -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf ]; then
@@ -173,7 +171,6 @@ echo "📄 CFG_FILE       = $CFG_FILE"
 echo "🐍 CONDA_ENV      = $CONDA_ENV_NAME"
 echo "🧩 HAWP_CFG       = $HAWP_CFG"
 echo "📁 RUN_DIR        = $RUN_DIR"
-echo "📁 SPICE_OUT_DIR  = $SPICE_NETLIST_DIR"
 echo "🧭 PYTHONPATH     = $PYTHONPATH"
 echo "======================================="
 
@@ -289,13 +286,6 @@ echo "✔ build_final_json 完成"
 echo "---------------------------------------"
 
 ############################################
-# 9. 将 final JSON 转换为 SPICE 网表
-############################################
-echo "🚀 [9/9] build_spice_netlists.py 开始..."
-python "$PIPELINE_DIR/build_spice_netlists.py" --cfg "$CFG_FILE" --output-dir "$SPICE_NETLIST_DIR"
-echo "✔ build_spice_netlists 完成"
-echo "---------------------------------------"
-
 echo "======================================="
-echo "🎉 全流程执行完成（YAML驱动版，含 SPICE 网表导出）"
+echo "🎉 全流程执行完成（YAML驱动版）"
 echo "======================================="

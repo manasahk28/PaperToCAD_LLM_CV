@@ -81,7 +81,7 @@ class TestUIServer(unittest.TestCase):
         self.assertFalse(grid_removed)
         self.assertEqual(cleaned.getpixel((50, 50)), (224, 112, 112))
 
-    def test_component_value_updates_refresh_graph_summary_and_spice(self):
+    def test_component_value_updates_refresh_graph_and_summary(self):
         graph = CircuitGraph(
             image_name="edited",
             width=100,
@@ -115,14 +115,12 @@ class TestUIServer(unittest.TestCase):
                     encoding="utf-8",
                 )
 
-                spice = server._persist_job_graph_updates("job", graph)
+                server._persist_job_graph_updates("job", graph)
 
                 saved_graph = json.loads((job_dir / "circuit_graph.json").read_text(encoding="utf-8"))
                 summary = json.loads((job_dir / "circuit.json").read_text(encoding="utf-8"))
                 self.assertEqual(saved_graph["components"][0]["value"], "22k")
                 self.assertEqual(summary["components"][0]["value"], "22k")
-                self.assertIn("value=22k", spice)
-                self.assertEqual((job_dir / "edited.cir").read_text(encoding="utf-8"), spice)
                 render.assert_called_once_with(graph, job_dir)
 
 

@@ -9,8 +9,6 @@ Tools exposed:
 - inspect_circuit(circuit_id): Components, nodes, connections, uncertainties
 - validate_circuit(circuit_id): Rule-based domain checks (shorts, floating pins, ground)
 - generate_schematic(circuit_id, theme): Renders IEEE CAD SVG diagram
-- export_spice_netlist(circuit_id): Synthesizes and exports SPICE .cir file
-- simulate_circuit(circuit_id, analysis): Validates and runs simulation via ngspice
 - explain_circuit(circuit_id, question): Grounded AI circuit explanation
 """
 
@@ -38,7 +36,6 @@ from circuit_data_model import CircuitGraph
 from connectivity_inspector import ConnectivityInspector
 from circuit_validator import CircuitValidator
 from cad_schematic_renderer import render_circuit_graph
-from spice_simulator import SPICESimulator
 from ai_assistant import AICircuitAssistant
 
 try:
@@ -82,7 +79,6 @@ def _build_job_config(config: Dict[str, Any], input_dir: Path, job_dir: Path) ->
         "type_refine_json": job_dir / "type_refine" / "json",
         "ports_cls_json": job_dir / "ports" / "json",
         "final_result_root": job_dir / "final",
-        "spice_netlists": job_dir / "spice",
     }
     paths.update({key: str(value) for key, value in stage_paths.items()})
     config["paths"] = paths
@@ -111,7 +107,7 @@ def _missing_optional_pipeline_weights(config: Dict[str, Any]) -> Dict[str, List
 def process_sketch(image_path: str, conf_threshold: float = 0.45, device: Optional[str] = None) -> str:
     """
     Runs the full circuit reconstruction pipeline on a local sketch image.
-    Returns the reconstructed graph, validation findings, schematic files, and SPICE netlist.
+    Returns the reconstructed graph, validation findings, and schematic files.
     """
     job_dir: Optional[Path] = None
     try:
@@ -214,12 +210,7 @@ def process_sketch(image_path: str, conf_threshold: float = 0.45, device: Option
         render_dir.mkdir(parents=True, exist_ok=True)
         schematic_files = render_circuit_graph(graph, render_dir)
 
-        from build_spice_netlists import export_one
 
-        spice_dir = job_dir / "spice"
-        spice_dir.mkdir(parents=True, exist_ok=True)
-        spice_path = Path(export_one(str(final_json), str(spice_dir)))
-        netlist = spice_path.read_text(encoding="utf-8")
 
         return json.dumps({
             "status": "success",
@@ -241,10 +232,6 @@ def process_sketch(image_path: str, conf_threshold: float = 0.45, device: Option
             "schematic": {
                 "output_directory": str(render_dir),
                 "files": schematic_files,
-            },
-            "spice": {
-                "netlist_path": str(spice_path),
-                "netlist": netlist,
             },
             "output_directory": str(job_dir),
         }, indent=2)
@@ -345,54 +332,6 @@ def generate_schematic(circuit_id: str = "cir1", theme: str = "dark") -> str:
             "output_directory": str(out_dir),
             "files": files
         }, indent=2)
-    except Exception as e:
-        return json.dumps({"error": str(e)}, indent=2)
-
-
-@mcp_server.tool()
-def export_spice_netlist(circuit_id: str = "cir1") -> str:
-    """
-    Synthesizes and exports a Berkeley SPICE netlist (.cir) from the circuit graph.
-    """
-    try:
-        clean_id = _normalize_circuit_id(circuit_id)
-        from build_spice_netlists import export_one
-        json_path = REPO_ROOT / "outputs" / "run1" / "final_result" / "json" / f"{clean_id}.final.json"
-        if not json_path.exists():
-            json_path = REPO_ROOT / "data" / "ground_truth" / f"{clean_id}.gt.json"
-
-        out_dir = REPO_ROOT / "outputs" / "mcp_spice"
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-        if json_path.exists():
-            spice_file = export_one(str(json_path), str(out_dir))
-            with open(spice_file, "r", encoding="utf-8") as f:
-                content = f.read()
-            return json.dumps({
-                "circuit_id": clean_id,
-                "netlist_path": spice_file,
-                "netlist": content
-            }, indent=2)
-        else:
-            return json.dumps({"error": f"Circuit {clean_id} final JSON not found"}, indent=2)
-    except Exception as e:
-        return json.dumps({"error": str(e)}, indent=2)
-
-
-@mcp_server.tool()
-def simulate_circuit(circuit_id: str = "cir1", analysis: str = "OP") -> str:
-    """
-    Validates the circuit netlist and executes SPICE simulation (DC operating point or transient)
-    using ngspice if available on the system.
-    """
-    try:
-        netlist_res = json.loads(export_spice_netlist(circuit_id))
-        if "netlist" not in netlist_res:
-            return json.dumps({"error": "Failed to generate netlist for simulation"}, indent=2)
-
-        simulator = SPICESimulator()
-        sim_res = simulator.run_simulation(netlist_res["netlist"], analysis=analysis)
-        return json.dumps(sim_res.model_dump(), indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)}, indent=2)
 

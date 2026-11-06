@@ -2296,6 +2296,82 @@ body {
   margin-left: 8px;
 }
 
+.ai-thinking-pill {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.35);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* AI Chat Typing & Thinking Indicator */
+.ai-typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  color: var(--text-secondary);
+}
+
+.ai-typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ai-typing-dots .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  opacity: 0.35;
+  animation: aiDotBounce 1.4s infinite ease-in-out both;
+}
+
+.ai-typing-dots .dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.ai-typing-dots .dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.ai-typing-dots .dot:nth-child(3) {
+  animation-delay: 0s;
+}
+
+@keyframes aiDotBounce {
+  0%, 80%, 100% {
+    transform: scale(0.65);
+    opacity: 0.3;
+  }
+  40% {
+    transform: scale(1.2);
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.75);
+  }
+}
+
+.ai-typing-text {
+  font-size: 0.86rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  animation: aiTextShimmer 2.5s infinite ease-in-out;
+}
+
+@keyframes aiTextShimmer {
+  0%, 100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+    color: var(--accent-cyan);
+  }
+}
+
 .ai-code-block {
   background: rgba(7, 12, 22, 0.95);
   border: 1px solid var(--border-subtle);

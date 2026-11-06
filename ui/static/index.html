@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PaperToCAD Studio | Hand-Drawn Circuit to SPICE Netlist</title>
-  <meta name="description" content="AI-Powered Computer Vision Pipeline converting hand-drawn circuit diagrams into structured CAD representations and SPICE netlists.">
+  <title>PaperToCAD Studio | Hand-Drawn Circuit to CAD</title>
+  <meta name="description" content="AI-Powered Computer Vision Pipeline converting hand-drawn circuit diagrams into structured digital CAD representations and schematics.">
   
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -31,7 +31,7 @@
         </div>
         <div class="brand-text">
           <h1>PaperToCAD <span class="badge-pro">Studio</span></h1>
-          <p class="subtitle">Hand-Drawn Schematic to SPICE Netlist AI Engine</p>
+          <p class="subtitle">Hand-Drawn Schematic to CAD AI Engine</p>
         </div>
       </div>
       
@@ -149,7 +149,7 @@
             <i class="fa-solid fa-circle-notch fa-spin"></i>
           </span>
           <span class="btn-text" id="btnText">
-            <i class="fa-solid fa-wand-magic-sparkles"></i> Convert to SPICE Netlist
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Convert Circuit to CAD
           </span>
         </button>
       </div>
@@ -171,7 +171,7 @@
           <li class="step-item" id="step-yolo"><i class="fa-solid fa-circle-dot"></i> YOLOv10 Component Detection</li>
           <li class="step-item" id="step-crops"><i class="fa-solid fa-circle-dot"></i> Micro-Cropping & Bounding Boxes</li>
           <li class="step-item" id="step-parseq"><i class="fa-solid fa-circle-dot"></i> PARSeq Text & Value OCR</li>
-          <li class="step-item" id="step-spice"><i class="fa-solid fa-circle-dot"></i> SPICE Netlist Synthesis</li>
+          <li class="step-item" id="step-cad"><i class="fa-solid fa-circle-dot"></i> CAD Schematic Synthesis</li>
         </ul>
       </div>
     </aside>
@@ -215,10 +215,6 @@
         <div class="export-actions">
           <button class="btn-action primary-action" id="downloadSchematicBtn" title="Download Computerized Schematic (SVG)">
             <i class="fa-solid fa-file-arrow-down"></i> Schematic (.svg)
-          </button>
-          <!-- Netlist download hidden from UI for now -->
-          <button class="btn-action" id="downloadSpiceBtn" title="Download SPICE Netlist (.cir)" style="display: none;">
-            <i class="fa-solid fa-download"></i> Netlist (.cir)
           </button>
           <button class="btn-action" id="downloadJsonBtn" title="Download Circuit Graph (.json)">
             <i class="fa-solid fa-file-code"></i> JSON Graph
@@ -546,8 +542,8 @@
                 <button class="prompt-chip" data-q="Are there any warnings, floating pins, or connection errors in this schematic?">
                   <i class="fa-solid fa-triangle-exclamation"></i> Check Warnings
                 </button>
-                <button class="prompt-chip" data-q="Summarize the SPICE netlist connections in simple terms.">
-                  <i class="fa-solid fa-diagram-project"></i> SPICE Netlist
+                <button class="prompt-chip" data-q="Summarize the circuit graph connections in simple terms.">
+                  <i class="fa-solid fa-diagram-project"></i> Circuit Graph
                 </button>
               </div>
 
@@ -572,48 +568,7 @@
         </div>
       </div>
 
-      <!-- [HIDDEN FROM UI FOR NOW]: Tab Content 5: SPICE Simulation
-      <div class="tab-pane" id="tab-sim">
-        <div class="sim-container">
-          <div class="sim-toolbar">
-            <div class="sim-controls">
-              <label>Analysis Type:</label>
-              <select id="simAnalysisSelect">
-                <option value="OP">DC Operating Point (.OP)</option>
-                <option value="TRAN">Transient Analysis (.TRAN 1u 10m)</option>
-              </select>
-              <button class="btn-primary-action" id="runSimBtn">
-                <i class="fa-solid fa-play"></i> Run ngspice Simulation
-              </button>
-            </div>
-            <div class="sim-status-pill" id="simStatusPill">
-              <span class="status-dot"></span>
-              <span id="simStatusText">Ready</span>
-            </div>
-          </div>
-
-          <div class="sim-results-grid">
-            <div class="sim-card">
-              <h4><i class="fa-solid fa-bolt"></i> Node Voltages</h4>
-              <div class="sim-table-wrap" id="simVoltagesWrap">
-                <p class="text-muted">No simulation executed yet.</p>
-              </div>
-            </div>
-            <div class="sim-card">
-              <h4><i class="fa-solid fa-arrows-split-up-and-left"></i> Device Currents</h4>
-              <div class="sim-table-wrap" id="simCurrentsWrap">
-                <p class="text-muted">No simulation executed yet.</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="sim-console-card">
-            <h4><i class="fa-solid fa-terminal"></i> Simulator Diagnostic Log</h4>
-            <pre id="simConsoleOutput">Click "Run ngspice Simulation" to execute the synthesized netlist.</pre>
-          </div>
-        </div>
-      </div>
-      -->
+      
 
       <!-- [HIDDEN FROM UI FOR NOW]: Tab Content: Model Context Protocol (MCP) Hub
       <div class="tab-pane" id="tab-mcp">
@@ -641,8 +596,6 @@
                   <option value="inspect_circuit">inspect_circuit</option>
                   <option value="validate_circuit">validate_circuit</option>
                   <option value="generate_schematic">generate_schematic</option>
-                  <option value="export_spice_netlist">export_spice_netlist</option>
-                  <option value="simulate_circuit">simulate_circuit</option>
                   <option value="explain_circuit">explain_circuit</option>
                 </select>
               </div>
@@ -687,22 +640,7 @@
       </div>
       -->
 
-      <!-- [HIDDEN FROM UI FOR NOW]: Tab Content 7: SPICE Netlist
-      <div class="tab-pane" id="tab-spice">
-        <div class="editor-header">
-          <div class="file-tag">
-            <i class="fa-solid fa-file-lines"></i>
-            <span id="spiceFilename">schematic.cir</span>
-          </div>
-          <button class="copy-btn" id="copySpiceBtn">
-            <i class="fa-solid fa-copy"></i> Copy Code
-          </button>
-        </div>
-        <div class="code-container">
-          <pre><code id="spiceCodeBlock" class="language-spice">* Click "Convert to SPICE Netlist" to generate circuit code...</code></pre>
-        </div>
-      </div>
-      -->
+      
 
       <!-- Tab Content 8: JSON Graph -->
       <div class="tab-pane" id="tab-json">

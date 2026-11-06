@@ -10,7 +10,7 @@ Provides strongly-typed, normalized internal circuit representation for:
 - Explicit Uncertainty Records (ambiguous types, uncertain values, questionable connections)
 
 Preserves original sketch pixel coordinates for interactive frontend highlighting
-and synchronizes with existing repository formats (.final.json, .link.json, SPICE netlists).
+and synchronizes with existing repository formats (.final.json, .link.json, CAD netlists).
 """
 
 from __future__ import annotations
@@ -500,7 +500,7 @@ class CircuitGraph(BaseModel):
                     confidence=0.5,
                     description=f"Component #{c.id} ({c.type}) does not have a recognized OCR value.",
                     evidence="No adjacent alphanumeric text token detected in sketch.",
-                    suggested_action=f"Assign nominal value (e.g., 1kΩ for resistor, 1uF for capacitor) before SPICE simulation."
+                    suggested_action=f"Assign nominal value (e.g., 1kΩ for resistor, 1uF for capacitor) before CAD export."
                 ))
                 uncertainty_counter += 1
 

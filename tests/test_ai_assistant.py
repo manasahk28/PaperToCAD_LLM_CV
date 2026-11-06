@@ -219,6 +219,22 @@ class TestAICircuitAssistantCalculations(unittest.TestCase):
         self.assertEqual(assistant.base_url, "https://api.groq.com/openai/v1")
         self.assertEqual(assistant.api_key, "groq-test-key")
 
+    @patch.dict(
+        "os.environ",
+        {
+            "LLM_PROVIDER": "groq",
+            "OPENAI_API_KEY": "openai-test-key",
+            "GROQ_API_KEY": "groq-test-key",
+        },
+        clear=True,
+    )
+    def test_llm_provider_groq_prefers_groq_when_both_keys_exist(self):
+        assistant = AICircuitAssistant()
+
+        self.assertEqual(assistant.provider, "Groq")
+        self.assertEqual(assistant.base_url, "https://api.groq.com/openai/v1")
+        self.assertEqual(assistant.api_key, "groq-test-key")
+
 
 if __name__ == "__main__":
     unittest.main()

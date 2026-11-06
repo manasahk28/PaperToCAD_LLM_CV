@@ -3,7 +3,7 @@
 """
 FastAPI Server for PaperToCAD UI.
 Provides REST APIs for circuit diagram upload, YOLOv10 detection,
-PARSeq OCR text fusion, connectivity analysis, and SPICE netlist generation.
+PARSeq OCR text fusion, connectivity analysis, and CAD schematic generation.
 """
 
 from __future__ import annotations
@@ -62,7 +62,6 @@ from cad_schematic_renderer import render_circuit_graph
 from circuit_data_model import CircuitGraph, ComponentModel, NodeModel, TerminalModel
 from connectivity_inspector import ConnectivityInspector
 from circuit_validator import CircuitValidator
-from spice_simulator import SPICESimulator
 from ai_assistant import AICircuitAssistant
 
 # Storage paths
@@ -193,50 +192,6 @@ def correct_diode_misclassified_as_battery(graph: CircuitGraph, image: Image.Ima
         corrected = True
     return corrected
 
-
-def synthesize_graph_spice_netlist(graph: CircuitGraph) -> str:
-    """Export inferred connections without inventing unknown component values."""
-    prefix_by_type = (
-        ("resistor", "R"),
-        ("capacitor", "C"),
-        ("inductor", "L"),
-        ("diode", "D"),
-        ("voltage", "V"),
-        ("current", "I"),
-        ("transistor", "Q"),
-        ("operational_amplifier", "U"),
-        ("integrated_circuit", "U"),
-    )
-    counters: Dict[str, int] = {}
-    lines = [
-        f"* Inferred from {graph.image_name}; topology follows detected net connections.",
-        "* Unknown values are intentionally not guessed; this deck may not be simulation-ready.",
-        f".TITLE {graph.image_name}",
-    ]
-    for component in graph.components:
-        component_type = component.type_refined or component.type
-        prefix = next((letter for name, letter in prefix_by_type if name in component_type.lower()), "X")
-        counters[prefix] = counters.get(prefix, 0) + 1
-        designator = component.label or f"{prefix}{counters[prefix]}"
-        terminals = sorted(component.terminals, key=lambda terminal: terminal.id)
-        if len(terminals) < 2:
-            lines.append(f"* {designator}: {component_type}; terminal connectivity is incomplete.")
-            continue
-        node_names = [
-            graph.get_node(terminal.connected_node_id).name
-            if terminal.connected_node_id is not None and graph.get_node(terminal.connected_node_id)
-            else None
-            for terminal in terminals[:2]
-        ]
-        if any(node_name is None for node_name in node_names):
-            lines.append(f"* {designator}: {component_type}; one or more nets are unknown.")
-            continue
-        if component.value:
-            lines.append(f"* {designator} {node_names[0]} {node_names[1]} {component_type} value={component.value}")
-        else:
-            lines.append(f"* {designator} {node_names[0]} {node_names[1]} {component_type} VALUE_REQUIRED")
-    lines.append(".END")
-    return "\n".join(lines) + "\n"
 
 
 def get_yolo_model():
@@ -563,145 +518,6 @@ def smart_bind_text_labels(components: List[Dict[str, Any]], text_boxes: List[Di
             c["text_label"] = d or v
 
 
-def synthesize_spice_netlist(image_name: str, components: List[Dict[str, Any]]) -> str:
-    """
-    Topologically accurate SPICE netlist synthesis for hand-drawn circuits.
-    Reconstructs exact sequential nodes for single loops, differential pairs, and multi-branch networks.
-    """
-    lines = [
-        f"* ==================================================",
-        f"* Auto-generated SPICE Netlist from Hand-Drawn Circuit",
-        f"* Target Image: {image_name}",
-        f"* Tool: PaperToCAD Studio Engine",
-        f"* ==================================================",
-        f".TITLE {image_name} Hand-Drawn Schematic",
-        f".OPTIONS ABSTOL=1n RELTOL=1e-3",
-        ""
-    ]
-
-    comps = [c for c in components if c["cls_name"] not in ("text", "junction", "crossover")]
-    gnd_comp = next((c for c in comps if "gnd" in c["cls_name"].lower()), None)
-    active = [c for c in comps if c != gnd_comp]
-
-    if not active:
-        lines.append("* No active components detected")
-        lines.append(".END")
-        return "\n".join(lines)
-
-    # Check for differential pair / BJT multistage circuit
-    bjts = [c for c in active if any(k in (c.get("cls_name_refined") or c.get("cls_name", "")).lower() for k in ("transistor", "bjt", "npn"))]
-    has_current = any("current" in (c.get("cls_name_refined") or c.get("cls_name", "")).lower() for c in active)
-
-    if len(bjts) == 2 or (len(bjts) >= 2 and has_current):
-        # Sort BJTs left to right
-        bjts.sort(key=lambda c: (c["bbox"][0] + c["bbox"][2]) / 2.0)
-        q1, q2 = bjts[0], bjts[1]
-        q1["designator"] = "Q1"
-        q2["designator"] = "Q2"
-
-        lines.append("* --- Differential Input Stage ---")
-        lines.append("VCC1   VDD1 0  DC 3.3V")
-        lines.append("VIN    IN   0  SIN(0 10m 1k)")
-        lines.append("Q1     NC1  IN   NE  Q2N2222")
-        lines.append("Q2     NC2  NREF NE  Q2N2222")
-        lines.append("VREF   NREF 0  DC 0V")
-        lines.append("R1     VDD1 NC1 25")
-        lines.append("R2     VDD1 NC2 25")
-        lines.append("I1     NE   0   DC 120u")
-        lines.append("")
-        lines.append("* --- Output Coupling & Transmission Stage ---")
-        lines.append("VCC2   VDD2 0  DC 5.0V")
-        lines.append("Rpu    VDD2 NOUT 1k")
-        lines.append("C1     NC2  NOUT 100n")
-        lines.append("Rs     NOUT NTX  50")
-        lines.append("T1     NTX  0    NLOAD 0  Z0=50 TD=50p")
-        lines.append("RLOAD  NLOAD 0   100")
-        lines.append("")
-        lines.append("* ---- Device Model Directives ----")
-        lines.append(".MODEL Q2N2222 NPN (IS=14.34p BF=255.9 VAF=74.03 IKF=0.284 XTB=1.5 BR=6.092 CJC=7.306p CJE=22.01p TR=46.91n TF=411.1p)")
-        lines.append("")
-        lines.append("* ---- Analysis Directives ----")
-        lines.append(".OP")
-        lines.append(".TRAN 10n 5u")
-        lines.append("")
-        lines.append("* ---- End of Netlist ----")
-        lines.append(".END")
-        lines.append("")
-        return "\n".join(lines)
-
-    # Check for single loop with power source on left
-    sources = [c for c in active if any(k in c["cls_name"].lower() for k in ("voltage", "battery", "source"))]
-    passives = [c for c in active if c not in sources]
-    passives.sort(key=lambda c: (c["bbox"][0] + c["bbox"][2]) / 2.0)
-
-    is_single_loop = bool(sources and passives)
-
-    if is_single_loop:
-        src = sources[0]
-        s_desig = src.get("designator") or "V1"
-        s_val = src.get("value") or "DC 5V"
-        if not s_val.upper().startswith("DC"):
-            s_val = f"DC {s_val}"
-
-        lines.append(f"* Source connected from Node 1 to Ground (0)")
-        lines.append(f"{s_desig:<6} N1 0 {s_val}")
-
-        curr_node = 1
-        for i, p in enumerate(passives):
-            p_cls = p["cls_name"].lower()
-            p_desig = p.get("designator") or f"R{i+1}"
-            p_val = p.get("value") or "1k"
-
-            in_node = f"N{curr_node}"
-            if i == len(passives) - 1:
-                out_node = "0"
-            else:
-                curr_node += 1
-                out_node = f"N{curr_node}"
-
-            if "light_emitting" in p_cls or "led" in p_desig.lower():
-                spice_desig = p_desig if p_desig.upper().startswith("D") else f"D_{p_desig}"
-                lines.append(f"{spice_desig:<6} {in_node:<5} {out_node:<5} DLED_AUTO")
-            elif "diode" in p_cls:
-                spice_desig = p_desig if p_desig.upper().startswith("D") else f"D_{p_desig}"
-                lines.append(f"{spice_desig:<6} {in_node:<5} {out_node:<5} D1N4148")
-            elif "resistor" in p_cls:
-                val_clean = p_val.replace("Ω", "").replace("ohm", "").strip() or "1k"
-                lines.append(f"{p_desig:<6} {in_node:<5} {out_node:<5} {val_clean}")
-            elif "capacitor" in p_cls:
-                lines.append(f"{p_desig:<6} {in_node:<5} {out_node:<5} {p_val}")
-            elif "inductor" in p_cls:
-                lines.append(f"{p_desig:<6} {in_node:<5} {out_node:<5} {p_val}")
-            else:
-                lines.append(f"{p_desig:<6} {in_node:<5} {out_node:<5} {p_val}")
-
-    else:
-        # General multi-branch
-        node_idx = 1
-        for c in active:
-            c_cls = c["cls_name"].lower()
-            desig = c.get("designator") or "U1"
-            val = c.get("value") or "1k"
-            lines.append(f"{desig:<6} N{node_idx} N{node_idx+1} {val}")
-            node_idx += 1
-
-    lines.extend([
-        "",
-        "* ---- Device Model Directives ----",
-        ".MODEL DLED_AUTO D (IS=1e-18 N=2 RS=5)",
-        ".MODEL D1N4148 D (IS=2.52n RS=0.568 N=1.752)",
-        "",
-        "* ---- Analysis Directives ----",
-        ".OP",
-        ".TRAN 1u 10m",
-        "",
-        "* ---- End of Netlist ----",
-        ".END",
-        ""
-    ])
-    return "\n".join(lines)
-
-
 # -----------------------------------------------------------------------------
 # API Endpoints
 # -----------------------------------------------------------------------------
@@ -742,7 +558,7 @@ async def process_circuit(
     """
     Core pipeline runner for an uploaded image or sample circuit.
     Executes YOLOv10 detection, crops components, extracts text OCR,
-    and produces annotated visual overlays and SPICE netlists.
+    and produces annotated visual overlays and CAD schematic representations.
     """
     job_id = str(uuid.uuid4())[:8]
     job_dir = UPLOAD_DIR / job_id
@@ -890,19 +706,8 @@ async def process_circuit(
     annotated_path = job_dir / "annotated.jpg"
     annotated_img.save(annotated_path, "JPEG", quality=95)
 
-    # 5. Topology-aware SPICE Netlist Synthesis
-    steps_log.append("[5/7] Exporting net connections without guessing missing values...")
-    if gt_json_path.is_file():
-        from build_spice_netlists import export_one
-        spice_file = export_one(str(gt_json_path), str(job_dir))
-        spice_netlist_text = Path(spice_file).read_text(encoding="utf-8")
-    else:
-        spice_netlist_text = synthesize_graph_spice_netlist(graph)
-
-    spice_file_path = job_dir / f"{image_name}.cir"
-    with open(spice_file_path, "w", encoding="utf-8") as sf:
-        sf.write(spice_netlist_text)
-
+    # 5. Circuit Graph Serialization
+    steps_log.append("[5/7] Saving normalized circuit graph and topology...")
     graph_path = job_dir / "circuit_graph.json"
     graph_path.write_text(json.dumps(graph.to_dict(), indent=2), encoding="utf-8")
 
@@ -922,8 +727,7 @@ async def process_circuit(
             "wire_count": len(graph.wires),
             "source": graph.metadata.get("source", "curated_ground_truth"),
         },
-        "components": components,
-        "spice_netlist": spice_netlist_text
+        "components": components
     }
     
     json_path = job_dir / "circuit.json"
@@ -963,7 +767,6 @@ async def process_circuit(
         },
         "components": components,
         "topology": graph_json["topology"],
-        "spice_netlist": spice_netlist_text,
         "logs": steps_log
     }
 
@@ -1147,42 +950,6 @@ def get_job_crop(job_id: str, filename: str):
     return FileResponse(p)
 
 
-@app.get("/api/jobs/{job_id}/download/spice")
-def download_spice(job_id: str):
-    clean_id = job_id.strip()
-    job_dir = UPLOAD_DIR / clean_id
-    if job_dir.exists():
-        for f in job_dir.glob("*.cir"):
-            return FileResponse(f, media_type="text/plain", filename=f.name)
-        for f in job_dir.glob("*.spice"):
-            return FileResponse(f, media_type="text/plain", filename=f.name)
-    sample_cir = REPO_ROOT / "outputs" / "run1" / "final_result" / "cir" / f"{clean_id}.cir"
-    mcp_cir = REPO_ROOT / "outputs" / "mcp_spice" / f"{clean_id}.spice"
-    if sample_cir.exists():
-        return FileResponse(sample_cir, media_type="text/plain", filename=f"{clean_id}.cir")
-    elif mcp_cir.exists():
-        return FileResponse(mcp_cir, media_type="text/plain", filename=f"{clean_id}.cir")
-    try:
-        from mcp_server import export_spice_netlist
-        res = json.loads(export_spice_netlist(clean_id))
-        netlist_text = res.get("netlist", "")
-        if netlist_text:
-            return Response(content=netlist_text, media_type="text/plain", headers={"Content-Disposition": f"attachment; filename={clean_id}.cir"})
-    except Exception:
-        pass
-    c_json = job_dir / "circuit.json"
-    if c_json.exists():
-        try:
-            with open(c_json, "r", encoding="utf-8") as f:
-                cdata = json.load(f)
-            netlist_text = cdata.get("spice_netlist", "")
-            if netlist_text:
-                return Response(content=netlist_text, media_type="text/plain", headers={"Content-Disposition": f"attachment; filename={clean_id}.cir"})
-        except Exception:
-            pass
-    raise HTTPException(status_code=404, detail="SPICE netlist not found")
-
-
 @app.get("/api/jobs/{job_id}/download/json")
 def download_json(job_id: str):
     clean_id = job_id.strip()
@@ -1304,10 +1071,6 @@ def _persist_job_graph_updates(job_id: str, graph: CircuitGraph) -> str:
         encoding="utf-8",
     )
 
-    spice_netlist = synthesize_graph_spice_netlist(graph)
-    spice_path = next(iter(job_dir.glob("*.cir")), job_dir / f"{graph.image_name}.cir")
-    spice_path.write_text(spice_netlist, encoding="utf-8")
-
     summary_path = job_dir / "circuit.json"
     if summary_path.is_file():
         with summary_path.open("r", encoding="utf-8") as f:
@@ -1322,7 +1085,6 @@ def _persist_job_graph_updates(job_id: str, graph: CircuitGraph) -> str:
                 component_data["cls_name"] = component.type
                 component_data["cls_name_refined"] = component.type_refined
         summary["total_labels"] = sum(bool(c.value or c.label) for c in graph.components)
-        summary["spice_netlist"] = spice_netlist
         summary["topology"] = {
             **summary.get("topology", {}),
             "inferred": bool(graph.nodes),
@@ -1354,14 +1116,13 @@ def _persist_job_graph_updates(job_id: str, graph: CircuitGraph) -> str:
         image.save(job_dir / "annotated.jpg", "JPEG", quality=95)
 
     render_circuit_graph(graph, job_dir)
-    return spice_netlist
 
 
 @app.post("/api/jobs/{job_id}/correct")
 async def apply_job_correction(job_id: str, payload: Dict[str, Any]):
     """
     Applies user-directed correction mutations to the circuit graph representation,
-    re-validates the graph, updates SPICE netlist, and re-renders the schematic.
+    re-validates the graph, updates the circuit graph, and re-renders the schematic.
     """
     graph = _get_or_load_job_graph(job_id)
     inspector = ConnectivityInspector(graph)
@@ -1373,7 +1134,7 @@ async def apply_job_correction(job_id: str, payload: Dict[str, Any]):
     if not ok:
         return JSONResponse(status_code=400, content={"success": False, "message": message})
 
-    spice_netlist = _persist_job_graph_updates(job_id, graph)
+    _persist_job_graph_updates(job_id, graph)
 
     # 3. Re-run validation
     validator = CircuitValidator(graph)
@@ -1387,48 +1148,7 @@ async def apply_job_correction(job_id: str, payload: Dict[str, Any]):
         "components": inspector.inspect_components(),
         "nodes": inspector.inspect_nodes(),
         "findings": [f.model_dump() for f in findings],
-        "spice_netlist": spice_netlist,
         "graph": graph.to_dict(),
-    }
-
-
-@app.post("/api/jobs/{job_id}/simulate")
-def simulate_job_circuit(job_id: str, analysis: str = Form("OP")):
-    """
-    Validates the generated SPICE netlist and executes simulation via ngspice.
-    """
-    job_dir = UPLOAD_DIR / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-    cir_files = list(job_dir.glob("*.cir")) + list(job_dir.glob("*.spice"))
-    netlist_text = None
-    if cir_files:
-        with open(cir_files[0], "r", encoding="utf-8") as f:
-            netlist_text = f.read()
-    else:
-        # Check sample circuits
-        sample_cir = REPO_ROOT / "outputs" / "run1" / "final_result" / "cir" / f"{job_id}.cir"
-        mcp_cir = REPO_ROOT / "outputs" / "mcp_spice" / f"{job_id}.spice"
-        if sample_cir.exists():
-            with open(sample_cir, "r", encoding="utf-8") as f:
-                netlist_text = f.read()
-        elif mcp_cir.exists():
-            with open(mcp_cir, "r", encoding="utf-8") as f:
-                netlist_text = f.read()
-        else:
-            sys.path.insert(0, str(REPO_ROOT / "src"))
-            from mcp_server import export_spice_netlist
-            res = json.loads(export_spice_netlist(job_id))
-            netlist_text = res.get("netlist", "")
-
-    if not netlist_text:
-        raise HTTPException(status_code=404, detail=f"SPICE netlist not available for {job_id}")
-
-    simulator = SPICESimulator()
-    result = simulator.run_simulation(netlist_text, analysis=analysis, temp_dir=job_dir)
-    return {
-        "success": result.success,
-        "job_id": job_id,
-        "result": result.model_dump()
     }
 
 
@@ -1467,7 +1187,7 @@ def get_assistant_status():
 async def chat_job_assistant(job_id: str, payload: Dict[str, Any]):
     """
     Queries Grounded AI Assistant powered by Groq regarding circuit topology,
-    validation findings, SPICE netlist behavior, or specific component queries.
+    validation findings, circuit topology, or specific component queries.
     """
     # Dynamically reload .env so user key changes take effect immediately
     try:
@@ -1482,31 +1202,13 @@ async def chat_job_assistant(job_id: str, payload: Dict[str, Any]):
     findings = validator.validate()
 
     job_dir = UPLOAD_DIR / clean_id
-    spice_netlist = None
     cdata = {}
     if (job_dir / "circuit.json").exists():
         try:
             with open(job_dir / "circuit.json", "r", encoding="utf-8") as f:
                 cdata = json.load(f)
-            spice_netlist = cdata.get("spice_netlist")
         except Exception:
             pass
-
-    if not spice_netlist and job_dir.exists():
-        for cf in job_dir.glob("*.cir"):
-            try:
-                spice_netlist = cf.read_text(encoding="utf-8")
-                break
-            except Exception:
-                pass
-
-    if not spice_netlist:
-        sample_cir = REPO_ROOT / "outputs" / "run1" / "final_result" / "cir" / f"{clean_id}.cir"
-        if sample_cir.exists():
-            try:
-                spice_netlist = sample_cir.read_text(encoding="utf-8")
-            except Exception:
-                pass
 
     user_question = payload.get("question", "")
     history = payload.get("history", [])
@@ -1522,7 +1224,6 @@ async def chat_job_assistant(job_id: str, payload: Dict[str, Any]):
         graph=graph,
         findings=findings,
         user_question=user_question,
-        spice_netlist=spice_netlist,
         extra_context=extra_context,
         history=history
     )
@@ -1538,7 +1239,7 @@ async def chat_job_assistant(job_id: str, payload: Dict[str, Any]):
 
 @app.get("/api/mcp/tools")
 def get_mcp_tools():
-    """Returns metadata for all 6 Paper2CAD Model Context Protocol (MCP) tools."""
+    """Returns metadata for Paper2CAD Model Context Protocol (MCP) tools."""
     return {
         "status": "online",
         "transport": "stdio / JSON-RPC 2.0",
@@ -1569,21 +1270,6 @@ def get_mcp_tools():
                 }
             },
             {
-                "name": "export_spice_netlist",
-                "description": "Generate clean standard SPICE netlist (.cir) from circuit graph.",
-                "parameters": {
-                    "circuit_id": {"type": "string", "required": True, "description": "Circuit name/ID"}
-                }
-            },
-            {
-                "name": "simulate_circuit",
-                "description": "Execute SPICE simulation using ngspice binary (DC OP or TRAN analysis).",
-                "parameters": {
-                    "circuit_id": {"type": "string", "required": True, "description": "Circuit name/ID"},
-                    "analysis_type": {"type": "string", "default": "OP", "enum": ["OP", "TRAN"]}
-                }
-            },
-            {
                 "name": "explain_circuit",
                 "description": "Ask grounded circuit AI assistant without hallucinations.",
                 "parameters": {
@@ -1605,7 +1291,7 @@ async def invoke_mcp_tool(payload: Dict[str, Any]):
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from mcp_server import (
         inspect_circuit, validate_circuit, generate_schematic,
-        export_spice_netlist, simulate_circuit, explain_circuit
+        explain_circuit
     )
 
     try:
@@ -1622,11 +1308,6 @@ async def invoke_mcp_tool(payload: Dict[str, Any]):
         elif tool_name == "generate_schematic":
             theme = args.get("theme", "dark")
             res = generate_schematic(circuit_id=circuit_id, theme=theme)
-        elif tool_name == "export_spice_netlist":
-            res = export_spice_netlist(circuit_id=circuit_id)
-        elif tool_name == "simulate_circuit":
-            analysis = args.get("analysis_type", "OP")
-            res = simulate_circuit(circuit_id=circuit_id, analysis_type=analysis)
         elif tool_name == "explain_circuit":
             q = args.get("question", "Explain the circuit topology.")
             res = explain_circuit(circuit_id=circuit_id, question=q)

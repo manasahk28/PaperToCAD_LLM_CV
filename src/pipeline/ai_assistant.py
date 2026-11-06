@@ -6,7 +6,7 @@ Provides circuit analysis, domain explanations, and interactive Q&A
 grounded strictly in:
 1. Reconstructed CircuitGraph data (components, nets, coordinates, values)
 2. Rule-based Validation findings (errors, warnings, suggested actions)
-3. SPICE simulation outputs (when available)
+3. CAD schematic netlist and component inventory
 
 Design Principles:
 - Never hallucinate invisible components or phantom connections.
@@ -95,7 +95,7 @@ def _format_calculated_value(value: float, unit: str) -> str:
 
 
 SYSTEM_PROMPT = """You are Paper2CAD Assistant, a knowledgeable, friendly, and articulate Electrical Engineering AI assistant that communicates in a natural, clear ChatGPT style.
-You analyze hand-drawn circuit diagrams converted into digital schematics and SPICE netlists by Paper2CAD Studio.
+You analyze hand-drawn circuit diagrams converted into digital CAD schematics by Paper2CAD Studio.
 
 CORE COMMUNICATION RULES (STRICT):
 1. CHATGPT-STYLE TONE & FLOW:
@@ -202,6 +202,7 @@ class AICircuitAssistant:
             pass
 
         configured_url = base_url or os.environ.get("LLM_BASE_URL")
+        provider_preference = os.environ.get("LLM_PROVIDER", "").strip().lower()
         groq_url = os.environ.get("GROQ_BASE_URL")
         groq_key = os.environ.get("GROQ_API_KEY", "").strip()
         openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
@@ -209,12 +210,18 @@ class AICircuitAssistant:
 
         if configured_url:
             self.base_url = configured_url
+        elif provider_preference in ("groq", "groqcloud") and groq_key:
+            self.base_url = groq_url or "https://api.groq.com/openai/v1"
+        elif provider_preference in ("openai", "chatgpt") and openai_key:
+            self.base_url = "https://api.openai.com/v1"
         elif groq_url and groq_key:
             self.base_url = groq_url
         elif groq_key and not (api_key or openai_key or generic_key):
             self.base_url = "https://api.groq.com/openai/v1"
         elif api_key or openai_key or generic_key:
             self.base_url = "https://api.openai.com/v1"
+        elif groq_key:
+            self.base_url = "https://api.groq.com/openai/v1"
         else:
             self.base_url = None
 
@@ -251,7 +258,6 @@ class AICircuitAssistant:
         findings: Optional[List[ValidationFinding]] = None,
         sim_result: Optional[Dict[str, Any]] = None,
         user_question: Optional[str] = None,
-        spice_netlist: Optional[str] = None,
         extra_context: Optional[Dict[str, Any]] = None,
         history: Optional[List[Dict[str, str]]] = None
     ) -> str:
@@ -276,7 +282,6 @@ class AICircuitAssistant:
                     findings or [],
                     sim_result,
                     user_question,
-                    spice_netlist=spice_netlist,
                     extra_context=extra_context,
                     history=history
                 )
@@ -292,7 +297,6 @@ class AICircuitAssistant:
         findings: List[ValidationFinding],
         sim_result: Optional[Dict[str, Any]],
         question: Optional[str],
-        spice_netlist: Optional[str] = None,
         extra_context: Optional[Dict[str, Any]] = None,
         history: Optional[List[Dict[str, str]]] = None
     ) -> str:
@@ -321,7 +325,6 @@ class AICircuitAssistant:
                 if any(node.is_ground or node.name == "0" for node in graph.nodes)
                 else "\nGround Reference: No ground reference was detected.\n"
             )
-            + (f"\nSPICE Netlist:\n```spice\n{spice_netlist.strip()}\n```\n" if spice_netlist else "")
         )
 
         messages = [
@@ -579,11 +582,7 @@ class AICircuitAssistant:
                 "Component values or intended function that are not present in the detected data cannot be inferred."
             )
 
-        if sim_result and sim_result.get("success"):
-            res.append("\n### SPICE Simulation (DC Operating Point):")
-            voltages = sim_result.get("node_voltages", {})
-            if voltages:
-                res.append("- **Node Voltages:** " + ", ".join(f"`V({k}) = {v:.2f}V`" for k, v in list(voltages.items())[:6]))
+
 
         return sanitize_chat_text("\n".join(res))
 

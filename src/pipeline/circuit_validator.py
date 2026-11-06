@@ -6,11 +6,11 @@ Performs comprehensive domain-specific electrical and topological validation
 on the extracted CircuitGraph model:
 - Floating or unconnected component terminals (context-aware)
 - Accidental component short-circuits (both terminals on same net)
-- Missing ground reference for SPICE simulation
+- Missing ground reference for circuit node potential
 - Missing or implausible passive component values
 - Isolated single-terminal nets (dangling electrical nodes)
 - Wire discontinuities and ambiguous non-soldered crossings
-- SPICE netlist syntax and topology check
+- Circuit netlist syntax and topology check
 
 Emits strongly-structured findings with severity, affected IDs, evidence,
 plain-language explanations, and suggested remediation actions.
@@ -81,7 +81,7 @@ class CircuitValidator:
                 affected_components=[],
                 affected_nodes=[],
                 evidence="No ground symbol ('gnd') or Node 0 was identified in the circuit graph.",
-                explanation="SPICE matrix solvers and circuit simulators require an explicit reference node (Node 0) to compute absolute node voltages.",
+                explanation="Circuit matrix solvers require an explicit reference node (Node 0) to compute absolute node voltages.",
                 suggested_action="Use the Inspector panel to designate a return rail as Ground (0), or add an explicit ground symbol."
             )]
         return []
@@ -185,7 +185,7 @@ class CircuitValidator:
                         affected_components=[c.id],
                         affected_nodes=[],
                         evidence=f"No OCR alphanumeric label assigned to component #{c.id}.",
-                        explanation="While topological schematic reconstruction succeeds without values, SPICE simulation defaults to nominal standard ratings.",
+                        explanation="While topological schematic reconstruction succeeds without values, downstream analysis defaults to nominal standard ratings.",
                         suggested_action=f"Specify value for component #{c.id} (e.g. '10kΩ', '1uF', '5V') in the inspector."
                     ))
                 else:

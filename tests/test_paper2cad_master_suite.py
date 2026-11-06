@@ -8,7 +8,6 @@ Covers end-to-end verification across:
 3. Junction & crossing handling
 4. JSON schema consistency & serialization roundtrip
 5. Rule-based circuit validation
-6. SPICE netlist generation
 7. Interactive CAD Schematic SVG rendering
 8. Official MCP tool outputs
 9. User correction mutation and re-rendering flow
@@ -29,14 +28,11 @@ from circuit_data_model import CircuitGraph, ComponentModel, NodeModel, Terminal
 from connectivity_inspector import ConnectivityInspector
 from circuit_validator import CircuitValidator
 from cad_schematic_renderer import CADSchematicRenderer, render_circuit_graph
-from spice_simulator import SPICESimulator
 from ai_assistant import AICircuitAssistant
 from mcp_server import (
     inspect_circuit,
     validate_circuit,
     generate_schematic,
-    export_spice_netlist,
-    simulate_circuit,
     explain_circuit
 )
 
@@ -107,17 +103,6 @@ class TestPaper2CADMasterSuite(unittest.TestCase):
             self.assertTrue(len(f.rule_id) > 0)
             self.assertTrue(len(f.explanation) > 0)
 
-    # 6. SPICE Netlist Generation
-    def test_06_spice_netlist_generation(self):
-        res_str = export_spice_netlist("cir1")
-        res = json.loads(res_str)
-        self.assertIn("netlist", res)
-        netlist = res["netlist"]
-        self.assertIn(".TITLE", netlist)
-        self.assertIn(".END", netlist)
-        # Confirm components are present
-        self.assertTrue(any(line.startswith(("R", "L", "C", "V", "I")) for line in netlist.splitlines()))
-
     # 7. CAD Schematic Rendering (SVG)
     def test_07_schematic_rendering(self):
         graph = CircuitGraph.from_final_json(self.cir1_path)
@@ -150,9 +135,7 @@ class TestPaper2CADMasterSuite(unittest.TestCase):
         exp = json.loads(explain_circuit("cir1", question="What is connected to component 0?"))
         self.assertIn("explanation", exp)
 
-        # 4. simulate_circuit (verifies honest simulator response)
-        sim = json.loads(simulate_circuit("cir1"))
-        self.assertIn("available", sim)
+
 
     # 9. User Correction & Re-validation Flow
     def test_09_user_corrections_flow(self):
